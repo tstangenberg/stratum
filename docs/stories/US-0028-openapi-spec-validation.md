@@ -1,7 +1,8 @@
 ---
 id: US-0028
 tags: [ci, api, dev-tooling]
-status: open
+status: blocked
+depends_on: [US-0033]
 ---
 
 # US-0028: OpenAPI spec validation with Redocly

@@ -1,7 +1,8 @@
 ---
 id: US-0032
 tags: [ci, dev-tooling, legal]
-status: ready
+status: blocked
+depends_on: [US-0033]
 ---
 
 # US-0032: SPDX license header check with addlicense
