@@ -1,7 +1,8 @@
 ---
 id: US-0026
 tags: [ci, dev-tooling, workflow]
-status: open
+status: done
+depends_on: [US-0025, US-0033]
 ---
 
 # US-0026: Automate story status from PR lifecycle

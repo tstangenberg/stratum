@@ -1,0 +1,77 @@
+name: Story Status
+
+on:
+  pull_request:
+    types: [opened, ready_for_review, closed]
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    name: update story status
+    runs-on: ubuntu-latest
+    if: startsWith(github.head_ref, 'story/US-')
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Resolve story and status
+        id: resolve
+        run: |
+          BRANCH="${{ github.head_ref }}"
+          STORY_ID=$(echo "$BRANCH" | grep -oE 'US-[0-9]{4}')
+
+          if [ -z "$STORY_ID" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          FILE=$(find docs/stories -name "${STORY_ID}-*.md" | head -1)
+          if [ -z "$FILE" ]; then
+            echo "::warning::No story file found for $STORY_ID — skipping"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          ACTION="${{ github.event.action }}"
+          MERGED="${{ github.event.pull_request.merged }}"
+          DRAFT="${{ github.event.pull_request.draft }}"
+
+          if [ "$ACTION" = "opened" ] && [ "$DRAFT" = "true" ]; then
+            STATUS="in-progress"
+          elif [ "$ACTION" = "opened" ]; then
+            STATUS="in-review"
+          elif [ "$ACTION" = "ready_for_review" ]; then
+            STATUS="in-review"
+          elif [ "$ACTION" = "closed" ] && [ "$MERGED" = "true" ]; then
+            STATUS="done"
+          elif [ "$ACTION" = "closed" ]; then
+            STATUS="ready"
+          else
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "story_id=$STORY_ID" >> "$GITHUB_OUTPUT"
+          echo "file=$FILE" >> "$GITHUB_OUTPUT"
+          echo "status=$STATUS" >> "$GITHUB_OUTPUT"
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+
+      - name: Update story status
+        if: steps.resolve.outputs.skip != 'true'
+        run: |
+          FILE="${{ steps.resolve.outputs.file }}"
+          STATUS="${{ steps.resolve.outputs.status }}"
+          STORY_ID="${{ steps.resolve.outputs.story_id }}"
+
+          sed -i "s/^status: .*/status: $STATUS/" "$FILE"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add "$FILE"
+          git diff --staged --quiet && echo "Status already $STATUS — nothing to commit" && exit 0
+          git commit -m "chore: story $STORY_ID → $STATUS [skip ci]"
+          git push
