@@ -38,6 +38,31 @@ jobs:
       - name: Lint OpenAPI spec
         run: npx --yes @redocly/cli@2 lint api/openapi.yaml
 
+  codegen-drift:
+    name: codegen-drift
+    runs-on: ubuntu-latest
+    needs: [spec-lint]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Check codegen drift
+        run: |
+          go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen \
+            --config api/oapi-codegen.yaml api/openapi.yaml
+          if ! git diff --quiet internal/api/api.gen.go; then
+            echo ""
+            echo "Generated code is out of sync with the OpenAPI spec."
+            echo "Run the following to regenerate:"
+            echo "  go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen --config api/oapi-codegen.yaml api/openapi.yaml"
+            exit 1
+          fi
+
   license:
     name: license
     runs-on: ubuntu-latest

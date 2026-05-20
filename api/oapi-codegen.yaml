@@ -1,8 +1,5 @@
-# oapi-codegen v2 configuration
-# Usage: oapi-codegen --config api/oapi-codegen.yaml api/openapi.yaml
 package: api
 generate:
   models: true
   std-http-server: true
-  spec: false
 output: internal/api/api.gen.go
