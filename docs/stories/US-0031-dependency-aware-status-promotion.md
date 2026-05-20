@@ -1,7 +1,7 @@
 ---
 id: US-0031
 tags: [ci, dev-tooling]
-status: blocked
+status: in-progress
 depends_on: [US-0026, US-0027]
 ---
 
