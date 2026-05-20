@@ -1,7 +1,7 @@
 ---
 id: US-0027
 tags: [ci, dev-tooling, workflow]
-status: open
+status: done
 ---
 
 # US-0027: Bot account branch protection bypass for main
