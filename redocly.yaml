@@ -1,0 +1,8 @@
+extends:
+  - recommended
+
+rules:
+  no-unused-components: error
+  no-unresolved-refs: error
+  operation-operationId: error
+  operation-4xx-response: warn   # health and info endpoints intentionally omit 4xx responses

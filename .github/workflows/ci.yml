@@ -28,6 +28,16 @@ jobs:
       - name: Test
         run: go test -race ./...
 
+  spec-lint:
+    name: spec-lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Lint OpenAPI spec
+        run: npx --yes @redocly/cli@2 lint api/openapi.yaml
+
   license:
     name: license
     runs-on: ubuntu-latest
