@@ -1,7 +1,7 @@
 ---
 id: US-0029
 tags: [ci, api, dev-tooling]
-status: in-review
+status: done
 depends_on: [US-0028]
 ---
 
