@@ -6,7 +6,9 @@
 package api
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -672,4 +674,621 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/schemas/{name}/status", wrapper.GetSchemaStatus)
 
 	return m
+}
+
+type BadRequestJSONResponse Error
+
+type ConflictJSONResponse Error
+
+type NotFoundJSONResponse Error
+
+type UnauthorizedJSONResponse Error
+
+type ValidationErrorJSONResponse Error
+
+type LivenessRequestObject struct {
+}
+
+type LivenessResponseObject interface {
+	VisitLivenessResponse(w http.ResponseWriter) error
+}
+
+type Liveness200JSONResponse LivenessResponse
+
+func (response Liveness200JSONResponse) VisitLivenessResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReadinessRequestObject struct {
+}
+
+type ReadinessResponseObject interface {
+	VisitReadinessResponse(w http.ResponseWriter) error
+}
+
+type Readiness200JSONResponse ReadinessResponse
+
+func (response Readiness200JSONResponse) VisitReadinessResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type Readiness503JSONResponse ReadinessResponse
+
+func (response Readiness503JSONResponse) VisitReadinessResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type InfoRequestObject struct {
+}
+
+type InfoResponseObject interface {
+	VisitInfoResponse(w http.ResponseWriter) error
+}
+
+type Info200JSONResponse InfoResponse
+
+func (response Info200JSONResponse) VisitInfoResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListSchemasRequestObject struct {
+}
+
+type ListSchemasResponseObject interface {
+	VisitListSchemasResponse(w http.ResponseWriter) error
+}
+
+type ListSchemas200JSONResponse SchemaList
+
+func (response ListSchemas200JSONResponse) VisitListSchemasResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListSchemas401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response ListSchemas401JSONResponse) VisitListSchemasResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteSchemaRequestObject struct {
+	Name SchemaName `json:"name"`
+}
+
+type DeleteSchemaResponseObject interface {
+	VisitDeleteSchemaResponse(w http.ResponseWriter) error
+}
+
+type DeleteSchema200JSONResponse DeleteResult
+
+func (response DeleteSchema200JSONResponse) VisitDeleteSchemaResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteSchema401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response DeleteSchema401JSONResponse) VisitDeleteSchemaResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteSchema404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response DeleteSchema404JSONResponse) VisitDeleteSchemaResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSchemaRequestObject struct {
+	Name SchemaName `json:"name"`
+}
+
+type GetSchemaResponseObject interface {
+	VisitGetSchemaResponse(w http.ResponseWriter) error
+}
+
+type GetSchema200JSONResponse SchemaDetail
+
+func (response GetSchema200JSONResponse) VisitGetSchemaResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSchema401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response GetSchema401JSONResponse) VisitGetSchemaResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSchema404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetSchema404JSONResponse) VisitGetSchemaResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpsertSchemaRequestObject struct {
+	Name   SchemaName `json:"name"`
+	Params UpsertSchemaParams
+	Body   *UpsertSchemaJSONRequestBody
+}
+
+type UpsertSchemaResponseObject interface {
+	VisitUpsertSchemaResponse(w http.ResponseWriter) error
+}
+
+type UpsertSchema200JSONResponse SchemaUploadResponse
+
+func (response UpsertSchema200JSONResponse) VisitUpsertSchemaResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpsertSchema400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response UpsertSchema400JSONResponse) VisitUpsertSchemaResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpsertSchema401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response UpsertSchema401JSONResponse) VisitUpsertSchemaResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpsertSchema409JSONResponse struct{ ConflictJSONResponse }
+
+func (response UpsertSchema409JSONResponse) VisitUpsertSchemaResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpsertSchema422JSONResponse struct{ ValidationErrorJSONResponse }
+
+func (response UpsertSchema422JSONResponse) VisitUpsertSchemaResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSchemaStatusRequestObject struct {
+	Name SchemaName `json:"name"`
+}
+
+type GetSchemaStatusResponseObject interface {
+	VisitGetSchemaStatusResponse(w http.ResponseWriter) error
+}
+
+type GetSchemaStatus200JSONResponse SchemaStatus
+
+func (response GetSchemaStatus200JSONResponse) VisitGetSchemaStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSchemaStatus401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response GetSchemaStatus401JSONResponse) VisitGetSchemaStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSchemaStatus404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetSchemaStatus404JSONResponse) VisitGetSchemaStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+// StrictServerInterface represents all server handlers.
+type StrictServerInterface interface {
+	// Liveness check — is the process alive?
+	// (GET /api/v1/health/live)
+	Liveness(ctx context.Context, request LivenessRequestObject) (LivenessResponseObject, error)
+	// Readiness check — are all dependencies healthy?
+	// (GET /api/v1/health/ready)
+	Readiness(ctx context.Context, request ReadinessRequestObject) (ReadinessResponseObject, error)
+	// Stratum version and build information
+	// (GET /api/v1/info)
+	Info(ctx context.Context, request InfoRequestObject) (InfoResponseObject, error)
+	// List all schemas
+	// (GET /api/v1/schemas)
+	ListSchemas(ctx context.Context, request ListSchemasRequestObject) (ListSchemasResponseObject, error)
+	// Delete a schema and its tables
+	// (DELETE /api/v1/schemas/{name})
+	DeleteSchema(ctx context.Context, request DeleteSchemaRequestObject) (DeleteSchemaResponseObject, error)
+	// Get a schema
+	// (GET /api/v1/schemas/{name})
+	GetSchema(ctx context.Context, request GetSchemaRequestObject) (GetSchemaResponseObject, error)
+	// Create or update a schema (upsert)
+	// (POST /api/v1/schemas/{name})
+	UpsertSchema(ctx context.Context, request UpsertSchemaRequestObject) (UpsertSchemaResponseObject, error)
+	// Get schema status and version
+	// (GET /api/v1/schemas/{name}/status)
+	GetSchemaStatus(ctx context.Context, request GetSchemaStatusRequestObject) (GetSchemaStatusResponseObject, error)
+}
+
+type StrictHandlerFunc func(ctx context.Context, w http.ResponseWriter, r *http.Request, request any) (any, error)
+type StrictMiddlewareFunc func(f StrictHandlerFunc, operationID string) StrictHandlerFunc
+
+type StrictHTTPServerOptions struct {
+	RequestErrorHandlerFunc  func(w http.ResponseWriter, r *http.Request, err error)
+	ResponseErrorHandlerFunc func(w http.ResponseWriter, r *http.Request, err error)
+}
+
+func NewStrictHandler(ssi StrictServerInterface, middlewares []StrictMiddlewareFunc) ServerInterface {
+	return &strictHandler{ssi: ssi, middlewares: middlewares, options: StrictHTTPServerOptions{
+		RequestErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, err error) {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+		},
+		ResponseErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, err error) {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		},
+	}}
+}
+
+func NewStrictHandlerWithOptions(ssi StrictServerInterface, middlewares []StrictMiddlewareFunc, options StrictHTTPServerOptions) ServerInterface {
+	return &strictHandler{ssi: ssi, middlewares: middlewares, options: options}
+}
+
+type strictHandler struct {
+	ssi         StrictServerInterface
+	middlewares []StrictMiddlewareFunc
+	options     StrictHTTPServerOptions
+}
+
+// Liveness operation middleware
+func (sh *strictHandler) Liveness(w http.ResponseWriter, r *http.Request) {
+	var request LivenessRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.Liveness(ctx, request.(LivenessRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "Liveness")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(LivenessResponseObject); ok {
+		if err := validResponse.VisitLivenessResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// Readiness operation middleware
+func (sh *strictHandler) Readiness(w http.ResponseWriter, r *http.Request) {
+	var request ReadinessRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.Readiness(ctx, request.(ReadinessRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "Readiness")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ReadinessResponseObject); ok {
+		if err := validResponse.VisitReadinessResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// Info operation middleware
+func (sh *strictHandler) Info(w http.ResponseWriter, r *http.Request) {
+	var request InfoRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.Info(ctx, request.(InfoRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "Info")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(InfoResponseObject); ok {
+		if err := validResponse.VisitInfoResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListSchemas operation middleware
+func (sh *strictHandler) ListSchemas(w http.ResponseWriter, r *http.Request) {
+	var request ListSchemasRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListSchemas(ctx, request.(ListSchemasRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListSchemas")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListSchemasResponseObject); ok {
+		if err := validResponse.VisitListSchemasResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteSchema operation middleware
+func (sh *strictHandler) DeleteSchema(w http.ResponseWriter, r *http.Request, name SchemaName) {
+	var request DeleteSchemaRequestObject
+
+	request.Name = name
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteSchema(ctx, request.(DeleteSchemaRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteSchema")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteSchemaResponseObject); ok {
+		if err := validResponse.VisitDeleteSchemaResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetSchema operation middleware
+func (sh *strictHandler) GetSchema(w http.ResponseWriter, r *http.Request, name SchemaName) {
+	var request GetSchemaRequestObject
+
+	request.Name = name
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetSchema(ctx, request.(GetSchemaRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetSchema")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetSchemaResponseObject); ok {
+		if err := validResponse.VisitGetSchemaResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpsertSchema operation middleware
+func (sh *strictHandler) UpsertSchema(w http.ResponseWriter, r *http.Request, name SchemaName, params UpsertSchemaParams) {
+	var request UpsertSchemaRequestObject
+
+	request.Name = name
+	request.Params = params
+
+	var body UpsertSchemaJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpsertSchema(ctx, request.(UpsertSchemaRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpsertSchema")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpsertSchemaResponseObject); ok {
+		if err := validResponse.VisitUpsertSchemaResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetSchemaStatus operation middleware
+func (sh *strictHandler) GetSchemaStatus(w http.ResponseWriter, r *http.Request, name SchemaName) {
+	var request GetSchemaStatusRequestObject
+
+	request.Name = name
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetSchemaStatus(ctx, request.(GetSchemaStatusRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetSchemaStatus")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetSchemaStatusResponseObject); ok {
+		if err := validResponse.VisitGetSchemaStatusResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
 }
