@@ -27,3 +27,27 @@ jobs:
 
       - name: Test
         run: go test -race ./...
+
+  license:
+    name: license
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Check license headers
+        run: |
+          go run github.com/google/addlicense \
+            -check -l agpl -c "Thorben Stangenberg" -s=only \
+            -ignore "**/*.gen.go" \
+            ./cmd ./tools ./internal 2>&1 || {
+            echo ""
+            echo "Missing SPDX headers. Run locally to fix:"
+            echo "  go run github.com/google/addlicense -l agpl -c \"Thorben Stangenberg\" -s=only -ignore \"**/*.gen.go\" ./cmd ./tools ./internal"
+            exit 1
+          }
