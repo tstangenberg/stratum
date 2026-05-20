@@ -1,7 +1,7 @@
 ---
 id: US-0030
 tags: [api, dev-tooling]
-status: blocked
+status: ready
 depends_on: [US-0029]
 ---
 
