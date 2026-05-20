@@ -1,0 +1,442 @@
+openapi: "3.0.3"
+
+info:
+  title: Stratum API
+  version: "0.1.0"
+  description: |
+    Schema-first data middleware. Define your domain model in GraphQL SDL —
+    Stratum handles persistence and exposes a GraphQL endpoint automatically.
+  license:
+    name: AGPL-3.0
+    url: https://www.gnu.org/licenses/agpl-3.0.html
+
+servers:
+  - url: http://localhost:8080
+    description: Local development
+
+tags:
+  - name: schema
+    description: Schema management — define and manage domain models
+  - name: system
+    description: Health checks and server information
+
+security:
+  - ApiKeyAuth: []
+
+paths:
+
+  # ── Schema Management ────────────────────────────────────────────────────────
+
+  /api/v1/schemas:
+    get:
+      operationId: listSchemas
+      summary: List all schemas
+      tags: [schema]
+      responses:
+        "200":
+          description: List of schemas
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SchemaList'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/v1/schemas/{name}:
+    parameters:
+      - $ref: '#/components/parameters/SchemaName'
+    post:
+      operationId: upsertSchema
+      summary: Create or update a schema (upsert)
+      tags: [schema]
+      parameters:
+        - name: preview
+          in: query
+          description: If true, return a preview of changes without applying them
+          schema:
+            type: boolean
+            default: false
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SchemaUploadRequest'
+      responses:
+        "200":
+          description: Schema applied or preview generated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SchemaUploadResponse'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "422":
+          $ref: '#/components/responses/ValidationError'
+    get:
+      operationId: getSchema
+      summary: Get a schema
+      tags: [schema]
+      responses:
+        "200":
+          description: Schema details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SchemaDetail'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+    delete:
+      operationId: deleteSchema
+      summary: Delete a schema and its tables
+      tags: [schema]
+      responses:
+        "200":
+          description: Schema deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeleteResult'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/schemas/{name}/status:
+    parameters:
+      - $ref: '#/components/parameters/SchemaName'
+    get:
+      operationId: getSchemaStatus
+      summary: Get schema status and version
+      tags: [schema]
+      responses:
+        "200":
+          description: Schema status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SchemaStatus'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+  # ── System ───────────────────────────────────────────────────────────────────
+
+  /api/v1/health/live:
+    get:
+      operationId: liveness
+      summary: Liveness check — is the process alive?
+      tags: [system]
+      security: []
+      responses:
+        "200":
+          description: Process is running
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LivenessResponse'
+
+  /api/v1/health/ready:
+    get:
+      operationId: readiness
+      summary: Readiness check — are all dependencies healthy?
+      tags: [system]
+      security: []
+      responses:
+        "200":
+          description: All components healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadinessResponse'
+        "503":
+          description: One or more components degraded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadinessResponse'
+
+  /api/v1/info:
+    get:
+      operationId: info
+      summary: Stratum version and build information
+      tags: [system]
+      security: []
+      responses:
+        "200":
+          description: Server information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InfoResponse'
+
+components:
+
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+
+  parameters:
+    SchemaName:
+      name: name
+      in: path
+      required: true
+      description: Schema name (URL-safe identifier)
+      schema:
+        type: string
+        pattern: '^[a-z][a-z0-9_-]*$'
+
+  schemas:
+
+    # ── Requests ───────────────────────────────────────────────────────────────
+
+    SchemaUploadRequest:
+      type: object
+      required: [sdl]
+      properties:
+        sdl:
+          type: string
+          description: GraphQL SDL defining the domain model
+        description:
+          type: string
+          description: Human-readable description of the schema
+        changelog:
+          type: string
+          description: Comment describing this change (like a commit message)
+
+    # ── Responses ──────────────────────────────────────────────────────────────
+
+    SchemaUploadResponse:
+      type: object
+      required: [name, status, version, updated_at]
+      properties:
+        name:
+          type: string
+        status:
+          type: string
+          enum: [applied, preview]
+        version:
+          type: integer
+        updated_at:
+          type: string
+          format: date-time
+        graphql_endpoint:
+          type: string
+          example: /graphql/products
+        is_destructive:
+          type: boolean
+          description: Present in preview mode — true if any change would cause data loss
+        changes:
+          type: array
+          description: Present in preview mode — list of schema changes
+          items:
+            $ref: '#/components/schemas/SchemaChange'
+
+    SchemaChange:
+      type: object
+      required: [type, on, destructive]
+      properties:
+        type:
+          type: string
+          enum: [field_added, field_removed, type_added, type_removed]
+        on:
+          type: string
+          description: Type name the change applies to
+        field:
+          type: string
+          description: Field name (for field-level changes)
+        fieldType:
+          type: string
+          description: GraphQL scalar type (for field_added)
+        destructive:
+          type: boolean
+
+    SchemaDetail:
+      type: object
+      required: [name, sdl, version, created_at, updated_at, graphql_endpoint]
+      properties:
+        name:
+          type: string
+        sdl:
+          type: string
+        description:
+          type: string
+        version:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        graphql_endpoint:
+          type: string
+
+    SchemaList:
+      type: object
+      required: [schemas]
+      properties:
+        schemas:
+          type: array
+          items:
+            $ref: '#/components/schemas/SchemaSummary'
+
+    SchemaSummary:
+      type: object
+      required: [name, version, updated_at]
+      properties:
+        name:
+          type: string
+        version:
+          type: integer
+        updated_at:
+          type: string
+          format: date-time
+
+    SchemaStatus:
+      type: object
+      required: [name, status, version, updated_at]
+      properties:
+        name:
+          type: string
+        status:
+          type: string
+          enum: [ready, migrating, error]
+        version:
+          type: integer
+        updated_at:
+          type: string
+          format: date-time
+
+    DeleteResult:
+      type: object
+      required: [success]
+      properties:
+        success:
+          type: boolean
+
+    LivenessResponse:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [ok]
+          example: ok
+
+    ReadinessResponse:
+      type: object
+      required: [status, components]
+      properties:
+        status:
+          type: string
+          enum: [ok, degraded]
+        components:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/ComponentHealth'
+
+    ComponentHealth:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [ok, error]
+        details:
+          type: object
+          additionalProperties: true
+          description: Optional extra info — must never contain credentials
+
+    InfoResponse:
+      type: object
+      required: [version]
+      properties:
+        version:
+          type: string
+          example: "0.1.0"
+        commit:
+          type: string
+          description: Git commit SHA
+          example: "a1b2c3d"
+        built_at:
+          type: string
+          format: date-time
+
+    # ── Errors ─────────────────────────────────────────────────────────────────
+
+    Error:
+      type: object
+      required: [error, message]
+      properties:
+        error:
+          type: string
+          example: validation_failed
+        message:
+          type: string
+          example: "Unknown directive @foo on field Product.name"
+        details:
+          type: array
+          items:
+            $ref: '#/components/schemas/ErrorDetail'
+
+    ErrorDetail:
+      type: object
+      properties:
+        line:
+          type: integer
+        column:
+          type: integer
+        message:
+          type: string
+
+  responses:
+    Unauthorized:
+      description: Missing or invalid API key
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: unauthorized
+            message: "Missing or invalid X-API-Key header"
+    BadRequest:
+      description: Malformed request body
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: Schema not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    ValidationError:
+      description: SDL validation failed
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: validation_failed
+            message: "Unknown directive @foo on field Product.name"
+            details:
+              - line: 3
+                column: 12
+                message: "Unknown directive @foo"
+    Conflict:
+      description: Schema is currently being migrated
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
