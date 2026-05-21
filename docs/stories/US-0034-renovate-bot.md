@@ -18,12 +18,12 @@ Configuration lives in `renovate.json` at the repo root. Renovate is enabled by 
 
 ## Acceptance Criteria
 
-- [ ] `renovate.json` is committed to the repo root
-- [ ] Go module dependencies are updated weekly, grouped into a single PR
-- [ ] GitHub Actions versions are updated weekly, grouped into a single PR
-- [ ] Patch-level updates are automerged if CI passes; minor and major require manual review
-- [ ] The Renovate GitHub App is installed on `tstangenberg/stratum`
-- [ ] A test PR appears within the first scheduled run confirming Renovate is active
+- [x] `renovate.json` is committed to the repo root
+- [x] Go module dependencies are updated weekly, grouped into a single PR
+- [x] GitHub Actions versions are updated weekly, grouped into a single PR
+- [x] Patch-level updates are automerged if CI passes; minor and major require manual review
+- [x] The Renovate GitHub App is installed on `tstangenberg/stratum`
+- [x] A test PR appears within the first scheduled run confirming Renovate is active
 
 ## E2E Tests
 
