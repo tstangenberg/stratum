@@ -9,10 +9,12 @@ import (
 )
 
 func main() {
-	srv := server.NewStratumServer()
-	h := server.Handler(srv)
-	log.Println("listening on :8080")
-	if err := http.ListenAndServe(":8080", h); err != nil {
+	if err := run(":8080"); err != nil {
 		log.Fatal(err)
 	}
+}
+
+func run(addr string) error {
+	srv := server.NewStratumServer()
+	return http.ListenAndServe(addr, server.Handler(srv))
 }
