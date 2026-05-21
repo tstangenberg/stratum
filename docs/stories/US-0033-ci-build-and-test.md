@@ -16,13 +16,13 @@ Foundational CI step. Creates the GitHub Actions workflow file that subsequent C
 
 ## Acceptance Criteria
 
-- [ ] A GitHub Actions workflow at `.github/workflows/ci.yml` triggers on every push and PR targeting `main`
-- [ ] The workflow pins the Go version to match `go.mod`
-- [ ] `go build ./...` runs and fails the build on any compilation error
-- [ ] `go vet ./...` runs and fails the build on any vet issue
-- [ ] `go test -race ./...` runs and fails the build on any test failure
-- [ ] Module dependencies are cached between runs (actions/cache on the Go module cache)
-- [ ] The job name is `build` — subsequent CI stories add parallel jobs to the same workflow file
+- [x] A GitHub Actions workflow at `.github/workflows/ci.yml` triggers on every push and PR targeting `main`
+- [x] The workflow pins the Go version to match `go.mod`
+- [x] `go build ./...` runs and fails the build on any compilation error
+- [x] `go vet ./...` runs and fails the build on any vet issue
+- [x] `go test -race ./...` runs and fails the build on any test failure
+- [x] Module dependencies are cached between runs (actions/cache on the Go module cache)
+- [x] The job name is `build` — subsequent CI stories add parallel jobs to the same workflow file
 
 ## E2E Tests
 
