@@ -1,7 +1,7 @@
 ---
 id: US-0021
 tags: [ci, coverage, dev-tooling]
-status: in-review
+status: done
 ---
 
 # US-0021: Test coverage report with Codecov
