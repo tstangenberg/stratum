@@ -16,10 +16,10 @@ A coverage floor prevents the common pattern where new code ships without tests 
 
 ## Acceptance Criteria
 
-- [ ] `codecov.yml` defines a minimum coverage threshold for the project
-- [ ] Codecov marks the PR check as failed when coverage drops below the threshold
-- [ ] The threshold applies to the `patch` (changed lines) as well as the `project` (overall)
-- [ ] The threshold value is documented in `codecov.yml` with a comment explaining the rationale
+- [x] `codecov.yml` defines a minimum coverage threshold for the project
+- [x] Codecov marks the PR check as failed when coverage drops below the threshold
+- [x] The threshold applies to the `patch` (changed lines) as well as the `project` (overall)
+- [x] The threshold value is documented in `codecov.yml` with a comment explaining the rationale
 
 ## E2E Tests
 
