@@ -1,7 +1,7 @@
 ---
 id: US-002
 tags: [health, observability]
-status: in-progress
+status: in-review
 ---
 
 # US-0002: Readiness check
