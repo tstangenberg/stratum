@@ -1,7 +1,7 @@
 ---
 id: US-001
 tags: [health, observability]
-status: in-progress
+status: done
 ---
 
 # US-0001: Liveness check
