@@ -65,7 +65,9 @@ func notImplementedHandler(w http.ResponseWriter, _ *http.Request, err error) {
 
 func Handler(srv *StratumServer) http.Handler {
 	strict := api.NewStrictHandlerWithOptions(srv, nil, api.StrictHTTPServerOptions{
-		RequestErrorHandlerFunc:  func(w http.ResponseWriter, r *http.Request, err error) { http.Error(w, err.Error(), http.StatusBadRequest) },
+		RequestErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, err error) {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+		},
 		ResponseErrorHandlerFunc: notImplementedHandler,
 	})
 	return api.Handler(strict)

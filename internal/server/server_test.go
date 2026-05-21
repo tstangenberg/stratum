@@ -48,11 +48,12 @@ func TestLiveness(t *testing.T) {
 		t.Fatalf("expected status=ok, got %q", body["status"])
 	}
 }
-func TestReadiness(t *testing.T)       { assert501(t, http.MethodGet, "/api/v1/health/ready") }
-func TestInfo(t *testing.T)            { assert501(t, http.MethodGet, "/api/v1/info") }
-func TestListSchemas(t *testing.T)     { assert501(t, http.MethodGet, "/api/v1/schemas") }
-func TestDeleteSchema(t *testing.T)    { assert501(t, http.MethodDelete, "/api/v1/schemas/foo") }
-func TestGetSchema(t *testing.T)       { assert501(t, http.MethodGet, "/api/v1/schemas/foo") }
+
+func TestReadiness(t *testing.T)    { assert501(t, http.MethodGet, "/api/v1/health/ready") }
+func TestInfo(t *testing.T)         { assert501(t, http.MethodGet, "/api/v1/info") }
+func TestListSchemas(t *testing.T)  { assert501(t, http.MethodGet, "/api/v1/schemas") }
+func TestDeleteSchema(t *testing.T) { assert501(t, http.MethodDelete, "/api/v1/schemas/foo") }
+func TestGetSchema(t *testing.T)    { assert501(t, http.MethodGet, "/api/v1/schemas/foo") }
 func TestUpsertSchema(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/schemas/foo", strings.NewReader(`{"schema":""}`))
 	req.Header.Set("Content-Type", "application/json")
