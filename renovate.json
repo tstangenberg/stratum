@@ -4,18 +4,39 @@
   "packageRules": [
     {
       "matchManagers": ["gomod"],
-      "groupName": "Go dependencies",
+      "matchUpdateTypes": ["patch"],
+      "groupName": "Go dependencies (patch)",
+      "schedule": ["before 9am on Monday"]
+    },
+    {
+      "matchManagers": ["gomod"],
+      "matchUpdateTypes": ["minor"],
+      "groupName": "Go dependencies (minor)",
+      "schedule": ["before 9am on Monday"]
+    },
+    {
+      "matchManagers": ["gomod"],
+      "matchUpdateTypes": ["major"],
+      "groupName": "Go dependencies (major)",
       "schedule": ["before 9am on Monday"]
     },
     {
       "matchManagers": ["github-actions"],
-      "groupName": "GitHub Actions",
+      "matchUpdateTypes": ["patch"],
+      "groupName": "GitHub Actions (patch)",
       "schedule": ["before 9am on Monday"]
     },
     {
-      "matchUpdateTypes": ["patch"],
-      "automerge": true,
-      "automergeType": "pr"
+      "matchManagers": ["github-actions"],
+      "matchUpdateTypes": ["minor"],
+      "groupName": "GitHub Actions (minor)",
+      "schedule": ["before 9am on Monday"]
+    },
+    {
+      "matchManagers": ["github-actions"],
+      "matchUpdateTypes": ["major"],
+      "groupName": "GitHub Actions (major)",
+      "schedule": ["before 9am on Monday"]
     }
   ]
 }
