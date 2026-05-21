@@ -16,11 +16,11 @@ Go's built-in `-coverprofile` generates coverage data. Codecov consumes it, stor
 
 ## Acceptance Criteria
 
-- [ ] CI runs `go test -coverprofile=coverage.out ./...` on every push and PR
-- [ ] Coverage report is uploaded to Codecov via the official GitHub Action
-- [ ] Codecov posts a coverage summary comment on every PR
-- [ ] README displays a Codecov coverage badge
-- [ ] Coverage data is collected from unit tests only (E2E tests tracked separately)
+- [x] CI runs `go test -coverprofile=coverage.out ./...` on every push and PR
+- [x] Coverage report is uploaded to Codecov via the official GitHub Action
+- [x] Codecov posts a coverage summary comment on every PR
+- [x] README displays a Codecov coverage badge
+- [x] Coverage data is collected from unit tests only (E2E tests tracked separately)
 
 ## E2E Tests
 

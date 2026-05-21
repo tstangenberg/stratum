@@ -26,7 +26,13 @@ jobs:
         run: go vet ./...
 
       - name: Test
-        run: go test -race ./...
+        run: go test -race -coverprofile=coverage.out ./...
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v5
+        with:
+          files: coverage.out
+          fail_ci_if_error: false
 
   spec-lint:
     name: spec-lint
