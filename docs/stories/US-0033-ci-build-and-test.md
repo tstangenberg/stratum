@@ -1,7 +1,7 @@
 ---
 id: US-0033
 tags: [ci, dev-tooling]
-status: in-review
+status: done
 ---
 
 # US-0033: CI pipeline — build and test
