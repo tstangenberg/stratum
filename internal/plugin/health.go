@@ -3,9 +3,14 @@ package plugin
 
 import "context"
 
+const (
+	StatusOK    = "ok"
+	StatusError = "error"
+)
+
 // HealthStatus is returned by a HealthPlugin check.
 type HealthStatus struct {
-	Status  string         // "ok" | "error"
+	Status  string         // StatusOK | StatusError
 	Details map[string]any // optional, must not contain credentials
 }
 

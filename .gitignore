@@ -20,3 +20,4 @@
 
 # Go
 vendor/
+coverage.out

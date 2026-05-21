@@ -61,11 +61,19 @@ func (s *StratumServer) Readiness(ctx context.Context, _ api.ReadinessRequestObj
 	overall := api.Ok
 	for r := range ch {
 		status := api.ComponentHealthStatusOk
-		if r.status.Status != "ok" {
+		if r.status.Status != plugin.StatusOK {
 			status = api.ComponentHealthStatusError
 			overall = api.Degraded
 		}
-		components[r.name] = api.ComponentHealth{Status: status}
+		var details *map[string]interface{}
+		if r.status.Details != nil {
+			d := make(map[string]interface{}, len(r.status.Details))
+			for k, v := range r.status.Details {
+				d[k] = v
+			}
+			details = &d
+		}
+		components[r.name] = api.ComponentHealth{Status: status, Details: details}
 	}
 
 	if overall == api.Degraded {
