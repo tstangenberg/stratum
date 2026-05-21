@@ -2,12 +2,15 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/tstangenberg/stratum/internal/api"
 )
 
 var h = Handler(NewStratumServer())
@@ -71,6 +74,16 @@ func TestBadRequestBody(t *testing.T) {
 	h.ServeHTTP(w, req)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 for bad body, got %d", w.Code)
+	}
+}
+
+func TestUnimplementedLiveness(t *testing.T) {
+	resp, err := UnimplementedStrictServerInterface{}.Liveness(context.Background(), api.LivenessRequestObject{})
+	if resp != nil {
+		t.Fatalf("expected nil response, got %v", resp)
+	}
+	if !errors.Is(err, errNotImplemented) {
+		t.Fatalf("expected errNotImplemented, got %v", err)
 	}
 }
 
