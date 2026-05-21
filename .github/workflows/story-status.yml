@@ -102,7 +102,7 @@ jobs:
 
           git diff --staged --quiet && echo "Status already $STATUS — nothing to commit" && exit 0
 
-          COMMIT_MSG="chore: story $STORY_ID → $STATUS [skip ci]"
+          COMMIT_MSG="chore: story $STORY_ID → $STATUS"
           git commit -m "$COMMIT_MSG"
           git push origin "$BRANCH"
           gh pr create \
