@@ -54,6 +54,10 @@ type StratumServer struct {
 	UnimplementedStrictServerInterface
 }
 
+func (s *StratumServer) Liveness(_ context.Context, _ api.LivenessRequestObject) (api.LivenessResponseObject, error) {
+	return api.Liveness200JSONResponse{Status: api.LivenessResponseStatusOk}, nil
+}
+
 // NewStratumServer creates a new StratumServer.
 func NewStratumServer() *StratumServer {
 	return &StratumServer{}

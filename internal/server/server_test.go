@@ -31,7 +31,23 @@ func assert501(t *testing.T, method, path string) {
 	}
 }
 
-func TestLiveness(t *testing.T)        { assert501(t, http.MethodGet, "/api/v1/health/live") }
+func TestLiveness(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/health/live", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	res := w.Result()
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", res.StatusCode)
+	}
+	var body map[string]string
+	if err := json.NewDecoder(res.Body).Decode(&body); err != nil {
+		t.Fatalf("response body not valid JSON: %v", err)
+	}
+	if body["status"] != "ok" {
+		t.Fatalf("expected status=ok, got %q", body["status"])
+	}
+}
 func TestReadiness(t *testing.T)       { assert501(t, http.MethodGet, "/api/v1/health/ready") }
 func TestInfo(t *testing.T)            { assert501(t, http.MethodGet, "/api/v1/info") }
 func TestListSchemas(t *testing.T)     { assert501(t, http.MethodGet, "/api/v1/schemas") }
