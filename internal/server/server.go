@@ -12,58 +12,44 @@ import (
 
 var errNotImplemented = errors.New("not implemented")
 
-// UnimplementedStrictServerInterface returns 501 for every operation.
-// Embed it in StratumServer and override methods as they are implemented.
-type UnimplementedStrictServerInterface struct{}
+type StratumServer struct{}
 
-func (UnimplementedStrictServerInterface) Liveness(_ context.Context, _ api.LivenessRequestObject) (api.LivenessResponseObject, error) {
-	return nil, errNotImplemented
-}
-
-func (UnimplementedStrictServerInterface) Readiness(_ context.Context, _ api.ReadinessRequestObject) (api.ReadinessResponseObject, error) {
-	return nil, errNotImplemented
-}
-
-func (UnimplementedStrictServerInterface) Info(_ context.Context, _ api.InfoRequestObject) (api.InfoResponseObject, error) {
-	return nil, errNotImplemented
-}
-
-func (UnimplementedStrictServerInterface) ListSchemas(_ context.Context, _ api.ListSchemasRequestObject) (api.ListSchemasResponseObject, error) {
-	return nil, errNotImplemented
-}
-
-func (UnimplementedStrictServerInterface) DeleteSchema(_ context.Context, _ api.DeleteSchemaRequestObject) (api.DeleteSchemaResponseObject, error) {
-	return nil, errNotImplemented
-}
-
-func (UnimplementedStrictServerInterface) GetSchema(_ context.Context, _ api.GetSchemaRequestObject) (api.GetSchemaResponseObject, error) {
-	return nil, errNotImplemented
-}
-
-func (UnimplementedStrictServerInterface) UpsertSchema(_ context.Context, _ api.UpsertSchemaRequestObject) (api.UpsertSchemaResponseObject, error) {
-	return nil, errNotImplemented
-}
-
-func (UnimplementedStrictServerInterface) GetSchemaStatus(_ context.Context, _ api.GetSchemaStatusRequestObject) (api.GetSchemaStatusResponseObject, error) {
-	return nil, errNotImplemented
-}
-
-// StratumServer is the main server struct. Embed UnimplementedStrictServerInterface
-// to get 501 responses for unimplemented endpoints, then override methods one by one.
-type StratumServer struct {
-	UnimplementedStrictServerInterface
+func NewStratumServer() *StratumServer {
+	return &StratumServer{}
 }
 
 func (s *StratumServer) Liveness(_ context.Context, _ api.LivenessRequestObject) (api.LivenessResponseObject, error) {
 	return api.Liveness200JSONResponse{Status: api.LivenessResponseStatusOk}, nil
 }
 
-// NewStratumServer creates a new StratumServer.
-func NewStratumServer() *StratumServer {
-	return &StratumServer{}
+func (s *StratumServer) Readiness(_ context.Context, _ api.ReadinessRequestObject) (api.ReadinessResponseObject, error) {
+	return nil, errNotImplemented
 }
 
-// notImplementedHandler writes a consistent 501 JSON body.
+func (s *StratumServer) Info(_ context.Context, _ api.InfoRequestObject) (api.InfoResponseObject, error) {
+	return nil, errNotImplemented
+}
+
+func (s *StratumServer) ListSchemas(_ context.Context, _ api.ListSchemasRequestObject) (api.ListSchemasResponseObject, error) {
+	return nil, errNotImplemented
+}
+
+func (s *StratumServer) DeleteSchema(_ context.Context, _ api.DeleteSchemaRequestObject) (api.DeleteSchemaResponseObject, error) {
+	return nil, errNotImplemented
+}
+
+func (s *StratumServer) GetSchema(_ context.Context, _ api.GetSchemaRequestObject) (api.GetSchemaResponseObject, error) {
+	return nil, errNotImplemented
+}
+
+func (s *StratumServer) UpsertSchema(_ context.Context, _ api.UpsertSchemaRequestObject) (api.UpsertSchemaResponseObject, error) {
+	return nil, errNotImplemented
+}
+
+func (s *StratumServer) GetSchemaStatus(_ context.Context, _ api.GetSchemaStatusRequestObject) (api.GetSchemaStatusResponseObject, error) {
+	return nil, errNotImplemented
+}
+
 func notImplementedHandler(w http.ResponseWriter, _ *http.Request, err error) {
 	if !errors.Is(err, errNotImplemented) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -77,7 +63,6 @@ func notImplementedHandler(w http.ResponseWriter, _ *http.Request, err error) {
 	})
 }
 
-// Handler returns a net/http handler for the Stratum API.
 func Handler(srv *StratumServer) http.Handler {
 	strict := api.NewStrictHandlerWithOptions(srv, nil, api.StrictHTTPServerOptions{
 		RequestErrorHandlerFunc:  func(w http.ResponseWriter, r *http.Request, err error) { http.Error(w, err.Error(), http.StatusBadRequest) },
