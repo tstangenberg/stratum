@@ -1,7 +1,7 @@
 ---
 id: US-0034
 tags: [ci, dev-tooling, dependencies]
-status: in-review
+status: done
 ---
 
 # US-0034: Automated dependency updates with Renovate
