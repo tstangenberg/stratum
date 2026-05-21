@@ -1,7 +1,7 @@
 ---
 id: US-0022
 tags: [ci, coverage, dev-tooling]
-status: open
+status: in-review
 ---
 
 # US-0022: Coverage threshold gate
