@@ -1,7 +1,7 @@
 ---
 id: US-0032
 tags: [ci, dev-tooling, legal]
-status: blocked
+status: ready
 depends_on: [US-0033]
 ---
 
