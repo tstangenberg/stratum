@@ -1,7 +1,7 @@
 ---
 id: US-0037
 tags: [legal, docs]
-status: in-progress
+status: done
 ---
 
 # US-0037: AGPL v3 License File
