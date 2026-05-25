@@ -18,6 +18,7 @@ Go 1.26 · PostgreSQL · `vektah/gqlparser` (SDL parsing) · `graphql-go/graphql
 
 - Stories live in `docs/stories/US-NNNN-<slug>.md`
 - One branch per story: `story/US-NNNN-<slug>`
+- Always work in a git worktree for the story branch — never edit files in the main checkout
 - Never commit directly to `main` — always a PR
 - No `Co-Authored-By` lines in commit messages
 
