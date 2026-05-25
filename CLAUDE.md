@@ -8,6 +8,7 @@ Schema-first data middleware. A user defines a domain model in GraphQL SDL → S
 
 - `docs/decisions/` — Architecture Decision Records (ADRs); read the relevant ADR before changing a technology or pattern
 - `docs/stories/` — User stories with acceptance criteria and E2E test names; the active story defines what to build
+- `docs/superpowers/plans/` — Implementation plans for stories; check for a plan matching the active story before writing any code (gitignored, local only)
 
 ## Tech stack
 
