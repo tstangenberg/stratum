@@ -21,6 +21,12 @@ Go 1.26 · PostgreSQL · `vektah/gqlparser` (SDL parsing) · `graphql-go/graphql
 - Never commit directly to `main` — always a PR
 - No `Co-Authored-By` lines in commit messages
 
+## Before opening a PR
+
+1. Verify every acceptance criterion in the story file is met
+2. Check off each criterion (`- [ ]` → `- [x]`) in the story file and commit the update
+3. Run the full test suite: `go test ./...`
+
 ## Test strategy — Double Loop TDD
 
 Write a failing E2E test first. Drive implementation with failing unit tests. E2E tests run against real PostgreSQL (testcontainers) — no mocks.
