@@ -61,13 +61,12 @@ jobs:
 
       - name: Check codegen drift
         run: |
-          go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen \
-            --config api/oapi-codegen.yaml api/openapi.yaml
+          go tool oapi-codegen --config api/oapi-codegen.yaml api/openapi.yaml
           if ! git diff --quiet internal/api/api.gen.go; then
             echo ""
             echo "Generated code is out of sync with the OpenAPI spec."
             echo "Run the following to regenerate:"
-            echo "  go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen --config api/oapi-codegen.yaml api/openapi.yaml"
+            echo "  go tool oapi-codegen --config api/oapi-codegen.yaml api/openapi.yaml"
             exit 1
           fi
 
@@ -78,19 +77,5 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-          cache: true
-
       - name: Check license headers
-        run: |
-          go run github.com/google/addlicense \
-            -check -l agpl -c "Thorben Stangenberg" -s=only \
-            -ignore "**/*.gen.go" \
-            ./cmd ./tools ./internal 2>&1 || {
-            echo ""
-            echo "Missing SPDX headers. Run locally to fix:"
-            echo "  go run github.com/google/addlicense -l agpl -c \"Thorben Stangenberg\" -s=only -ignore \"**/*.gen.go\" ./cmd ./tools ./internal"
-            exit 1
-          }
+        uses: apache/skywalking-eyes/header@v0.8.0

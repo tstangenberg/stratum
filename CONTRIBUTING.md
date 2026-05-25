@@ -33,16 +33,40 @@ The story-status workflow commits directly to `main` (bypassing the PR requireme
 3. Add the token as a repository secret named `BOT_TOKEN`:
    `gh secret set BOT_TOKEN --repo tstangenberg/stratum`
 
+## Pre-commit hooks
+
+This project uses pre-commit to run checks locally before committing. The hooks check for:
+
+- Copyright and SPDX license headers
+- Go formatting (`gofmt`)
+- Go static analysis (`go vet`)
+- OpenAPI spec validation
+
+**Installation:**
+
+```bash
+brew install license-eye  # or: go install github.com/apache/skywalking-eyes/cmd/license-eye@latest
+pip install pre-commit
+pre-commit install
+```
+
+**Run manually on all files:**
+
+```bash
+pre-commit run --all-files
+```
+
+**Auto-fix copyright headers locally:**
+
+```bash
+license-eye header fix
+```
+
 ## License headers
 
-Every hand-written `.go` file must carry an SPDX header:
+Every hand-written `.go` file must carry both copyright and SPDX headers:
 
 ```
-// SPDX-License-Identifier: AGPL-3.0-or-later
-```
-
-To add missing headers locally:
-
-```
-go run github.com/google/addlicense -l agpl -c "Thorben Stangenberg" -s=only -ignore "**/*.gen.go" ./cmd ./tools ./internal
+Copyright 2026 Thorben Stangenberg
+SPDX-License-Identifier: AGPL-3.0-or-later
 ```

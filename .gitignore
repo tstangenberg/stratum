@@ -21,3 +21,6 @@
 # Go
 vendor/
 coverage.out
+
+# Pre-commit
+.cache/

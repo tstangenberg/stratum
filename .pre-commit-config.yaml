@@ -1,0 +1,30 @@
+repos:
+  - repo: local
+    hooks:
+      - id: go-fmt
+        name: gofmt
+        language: system
+        entry: gofmt -w
+        types: [go]
+        exclude: \.gen\.go$
+
+      - id: go-vet
+        name: go vet
+        language: system
+        entry: go vet ./...
+        pass_filenames: false
+        types: [go]
+
+      - id: license-headers
+        name: license headers
+        language: system
+        entry: license-eye header fix
+        pass_filenames: false
+        types: [go]
+
+      - id: openapi-lint
+        name: OpenAPI spec lint
+        language: system
+        entry: npx --yes @redocly/cli@2 lint api/openapi.yaml
+        files: ^api/.*\.(yaml|yml)$
+        pass_filenames: false
