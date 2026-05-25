@@ -18,29 +18,23 @@
 package main
 
 import (
-	"log"
-	"net/http"
 	"os"
-
-	"github.com/tstangenberg/stratum/internal/server"
+	"testing"
 )
 
-func resolveAddr() string {
-	if addr := os.Getenv("STRATUM_ADDR"); addr != "" {
-		return addr
-	}
-	return ":8080"
-}
-
-func main() {
-	addr := resolveAddr()
-	log.Printf("listening on %s", addr)
-	if err := run(addr); err != nil {
-		log.Fatal(err)
+func TestResolveAddr_DefaultsTo8080(t *testing.T) {
+	os.Unsetenv("STRATUM_ADDR")
+	got := resolveAddr()
+	if got != ":8080" {
+		t.Errorf("resolveAddr() = %q, want %q", got, ":8080")
 	}
 }
 
-func run(addr string) error {
-	srv := server.NewStratumServer()
-	return http.ListenAndServe(addr, server.Handler(srv))
+func TestResolveAddr_UsesEnvVar(t *testing.T) {
+	os.Setenv("STRATUM_ADDR", ":9090")
+	defer os.Unsetenv("STRATUM_ADDR")
+	got := resolveAddr()
+	if got != ":9090" {
+		t.Errorf("resolveAddr() = %q, want %q", got, ":9090")
+	}
 }
