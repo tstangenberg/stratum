@@ -24,3 +24,6 @@ coverage.out
 
 # Pre-commit
 .cache/
+
+# Local agent plans
+docs/superpowers/
