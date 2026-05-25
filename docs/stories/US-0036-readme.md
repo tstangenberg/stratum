@@ -1,7 +1,7 @@
 ---
 id: US-0036
 tags: [docs, dev-tooling]
-status: in-progress
+status: done
 depends_on: [US-0021]
 ---
 
