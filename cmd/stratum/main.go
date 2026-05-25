@@ -46,23 +46,24 @@ func main() {
 }
 
 func run(addr string) error {
-	plugins := defaultPlugins()
+	db, plugins := defaultPlugins()
+	if db != nil {
+		defer db.Close()
+	}
 	srv := server.NewStratumServer(plugins...)
 	return http.ListenAndServe(addr, server.Handler(srv))
 }
 
-func defaultPlugins() []plugin.HealthPlugin {
-	var plugins []plugin.HealthPlugin
+func defaultPlugins() (*sql.DB, []plugin.HealthPlugin) {
 	dsn := os.Getenv("DATABASE_URL")
 	if dsn == "" {
 		log.Printf("DATABASE_URL not set; database health check disabled")
-		return plugins
+		return nil, nil
 	}
 	db, err := sql.Open("pgx", dsn)
 	if err != nil {
 		log.Printf("failed to open database: %v; database health check disabled", err)
-		return plugins
+		return nil, nil
 	}
-	plugins = append(plugins, dbplugin.New(db))
-	return plugins
+	return db, []plugin.HealthPlugin{dbplugin.New(db)}
 }

@@ -16,12 +16,12 @@ status: open
 
 ## Acceptance Criteria
 
-- [ ] Plugin is registered automatically in the default Stratum binary
-- [ ] Check executes a lightweight PostgreSQL ping (e.g. `SELECT 1`)
-- [ ] Returns `{ "status": "ok" }` when the database responds
-- [ ] Returns `{ "status": "error", "details": { "error": "<message>" } }` when the database is unreachable
-- [ ] Appears as `"database"` in the `components` map of `GET /api/v1/health/ready`
-- [ ] Does not expose connection credentials or internal connection string in the error details
+- [x] Plugin is registered automatically in the default Stratum binary
+- [x] Check executes a lightweight PostgreSQL ping (e.g. `SELECT 1`)
+- [x] Returns `{ "status": "ok" }` when the database responds
+- [x] Returns `{ "status": "error", "details": { "error": "<message>" } }` when the database is unreachable
+- [x] Appears as `"database"` in the `components` map of `GET /api/v1/health/ready`
+- [x] Does not expose connection credentials or internal connection string in the error details
 
 ## E2E Tests
 
