@@ -46,7 +46,7 @@ This project uses pre-commit to run checks locally before committing. The hooks 
 
 ```bash
 brew install license-eye  # or: go install github.com/apache/skywalking-eyes/cmd/license-eye@latest
-pip install pre-commit
+brew install pre-commit
 pre-commit install
 ```
 
