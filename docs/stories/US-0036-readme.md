@@ -17,12 +17,12 @@ A minimal `README.md` with CI and Codecov badges was added in US-0021. This stor
 
 ## Acceptance Criteria
 
-- [ ] README opens with a one-paragraph project description
-- [ ] CI and Codecov badges are present and link to the correct targets
-- [ ] "Getting started" section covers: prerequisites, building (`go build ./...`), and running (`go run ./cmd/stratum`)
-- [ ] "Contributing" section links to `CONTRIBUTING.md`
-- [ ] "License" section states AGPL-3.0-or-later and links to `LICENSE`
-- [ ] A `LICENSE` file containing the AGPL-3.0 full text is committed to the repo root
+- [x] README opens with a one-paragraph project description
+- [x] CI and Codecov badges are present and link to the correct targets
+- [x] "Getting started" section covers: prerequisites, building (`go build ./...`), and running (`go run ./cmd/stratum`)
+- [x] "Contributing" section links to `CONTRIBUTING.md`
+- [x] "License" section states AGPL-3.0-or-later and links to `LICENSE`
+- [x] A `LICENSE` file containing the AGPL-3.0 full text is committed to the repo root
 
 ## E2E Tests
 
