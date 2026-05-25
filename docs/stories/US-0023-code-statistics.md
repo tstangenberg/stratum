@@ -1,7 +1,7 @@
 ---
 id: US-0023
 tags: [ci, dev-tooling]
-status: open
+status: ready
 ---
 
 # US-0023: Code statistics with scc
