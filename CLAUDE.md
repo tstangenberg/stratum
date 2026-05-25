@@ -4,16 +4,10 @@
 
 Schema-first data middleware. A user defines a domain model in GraphQL SDL → Stratum creates PostgreSQL tables and exposes a GraphQL API automatically. Self-hosted, open-source (AGPL v3).
 
-## Design documents
+## Documentation
 
-Read these before touching the relevant code:
-
-- `docs/plugin-system.md` — plugin types, interfaces, MVP bundle, init() registration
-- `docs/rest-api.md` — REST endpoints, schema upload request/response format
-- `docs/graphql-api.md` — nested namespace pattern, mutations, resolvers
-- `docs/relations.md` — FK naming convention, N:1 / 1:N query resolution
-- `docs/mvp/mvp-1.md` — Ortschaftenverzeichnis schema, fixture data, E2E test order
-- `docs/superpowers/plans/` — implementation plans for active stories
+- `docs/decisions/` — Architecture Decision Records (ADRs); read the relevant ADR before changing a technology or pattern
+- `docs/stories/` — User stories with acceptance criteria and E2E test names; the active story defines what to build
 
 ## Tech stack
 
