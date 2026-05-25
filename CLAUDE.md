@@ -43,7 +43,7 @@ Write a failing E2E test first. Drive implementation with failing unit tests. E2
 
 ## License
 
-Every `.go` file must start with `// SPDX-License-Identifier: AGPL-3.0-or-later`. The `license` CI job enforces this via `addlicense -check`.
+Every `.go` file must carry `// SPDX-License-Identifier: AGPL-3.0-or-later`. The pre-commit hook adds it automatically; the `license` CI job enforces it via `addlicense -check`.
 
 ## Key constraints
 
