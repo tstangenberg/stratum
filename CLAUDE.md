@@ -49,7 +49,7 @@ Every `.go` file must carry `// SPDX-License-Identifier: AGPL-3.0-or-later`. The
 ## Key constraints
 
 - No built-ins in core — scalars, filters, auth all come via plugins
-- No N:M or 1:1 relations — Post-MVP
+- No N:M or 1:1 relations
 - FK name = field name (`kanton_id`, not `kanton_type_id`)
 - No mocks in E2E — real PostgreSQL only
-- YAGNI — no code for Post-MVP features
+- YAGNI — implement only what the active story requires
