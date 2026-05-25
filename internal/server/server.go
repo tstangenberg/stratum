@@ -22,24 +22,86 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"sync"
+	"time"
 
 	"github.com/tstangenberg/stratum/internal/api"
+	"github.com/tstangenberg/stratum/internal/plugin"
 )
 
 var errNotImplemented = errors.New("not implemented")
 
-type StratumServer struct{}
+// UnimplementedStrictServerInterface returns 501 for every operation.
+// Embed it in StratumServer and override methods as they are implemented.
+type UnimplementedStrictServerInterface struct{}
 
-func NewStratumServer() *StratumServer {
-	return &StratumServer{}
+// StratumServer is the main server struct. Embed UnimplementedStrictServerInterface
+// to get 501 responses for unimplemented endpoints, then override methods one by one.
+type StratumServer struct {
+	UnimplementedStrictServerInterface
+	healthPlugins []plugin.HealthPlugin
+}
+
+// NewStratumServer creates a new StratumServer with the given health plugins.
+func NewStratumServer(plugins ...plugin.HealthPlugin) *StratumServer {
+	return &StratumServer{healthPlugins: plugins}
 }
 
 func (s *StratumServer) Liveness(_ context.Context, _ api.LivenessRequestObject) (api.LivenessResponseObject, error) {
 	return api.Liveness200JSONResponse{Status: api.LivenessResponseStatusOk}, nil
 }
 
-func (s *StratumServer) Readiness(_ context.Context, _ api.ReadinessRequestObject) (api.ReadinessResponseObject, error) {
-	return nil, errNotImplemented
+func (s *StratumServer) Readiness(ctx context.Context, _ api.ReadinessRequestObject) (api.ReadinessResponseObject, error) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	type result struct {
+		name   string
+		status plugin.HealthStatus
+	}
+
+	ch := make(chan result, len(s.healthPlugins))
+	var wg sync.WaitGroup
+	for _, p := range s.healthPlugins {
+		wg.Add(1)
+		p := p
+		go func() {
+			defer wg.Done()
+			ch <- result{name: p.Name(), status: p.Check(ctx)}
+		}()
+	}
+	wg.Wait()
+	close(ch)
+
+	components := make(map[string]api.ComponentHealth, len(s.healthPlugins))
+	overall := api.Ok
+	for r := range ch {
+		status := api.ComponentHealthStatusOk
+		if r.status.Status != plugin.StatusOK {
+			status = api.ComponentHealthStatusError
+			overall = api.Degraded
+		}
+		var details *map[string]interface{}
+		if r.status.Details != nil {
+			d := make(map[string]interface{}, len(r.status.Details))
+			for k, v := range r.status.Details {
+				d[k] = v
+			}
+			details = &d
+		}
+		components[r.name] = api.ComponentHealth{Status: status, Details: details}
+	}
+
+	if overall == api.Degraded {
+		return api.Readiness503JSONResponse{
+			Status:     api.Degraded,
+			Components: components,
+		}, nil
+	}
+	return api.Readiness200JSONResponse{
+		Status:     api.Ok,
+		Components: components,
+	}, nil
 }
 
 func (s *StratumServer) Info(_ context.Context, _ api.InfoRequestObject) (api.InfoResponseObject, error) {
@@ -66,6 +128,7 @@ func (s *StratumServer) GetSchemaStatus(_ context.Context, _ api.GetSchemaStatus
 	return nil, errNotImplemented
 }
 
+// notImplementedHandler writes a consistent 501 JSON body.
 func notImplementedHandler(w http.ResponseWriter, _ *http.Request, err error) {
 	if !errors.Is(err, errNotImplemented) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -79,6 +142,7 @@ func notImplementedHandler(w http.ResponseWriter, _ *http.Request, err error) {
 	})
 }
 
+// Handler returns a net/http handler for the Stratum API.
 func Handler(srv *StratumServer) http.Handler {
 	strict := api.NewStrictHandlerWithOptions(srv, nil, api.StrictHTTPServerOptions{
 		RequestErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, err error) {
