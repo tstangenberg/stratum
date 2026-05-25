@@ -4,16 +4,11 @@
 
 Schema-first data middleware. A user defines a domain model in GraphQL SDL → Stratum creates PostgreSQL tables and exposes a GraphQL API automatically. Self-hosted, open-source (AGPL v3).
 
-## Design documents
+## Documentation
 
-Read these before touching the relevant code:
-
-- `docs/plugin-system.md` — plugin types, interfaces, MVP bundle, init() registration
-- `docs/rest-api.md` — REST endpoints, schema upload request/response format
-- `docs/graphql-api.md` — nested namespace pattern, mutations, resolvers
-- `docs/relations.md` — FK naming convention, N:1 / 1:N query resolution
-- `docs/mvp/mvp-1.md` — Ortschaftenverzeichnis schema, fixture data, E2E test order
-- `docs/superpowers/plans/` — implementation plans for active stories
+- `docs/decisions/` — Architecture Decision Records (ADRs); read the relevant ADR before changing a technology or pattern
+- `docs/stories/` — User stories with acceptance criteria and E2E test names; the active story defines what to build
+- `docs/superpowers/plans/` — Implementation plans for stories; check for a plan matching the active story before writing any code (gitignored, local only)
 
 ## Tech stack
 
@@ -23,8 +18,15 @@ Go 1.26 · PostgreSQL · `vektah/gqlparser` (SDL parsing) · `graphql-go/graphql
 
 - Stories live in `docs/stories/US-NNNN-<slug>.md`
 - One branch per story: `story/US-NNNN-<slug>`
+- Always work in a git worktree for the story branch — never edit files in the main checkout
 - Never commit directly to `main` — always a PR
 - No `Co-Authored-By` lines in commit messages
+
+## Before opening a PR
+
+1. Verify every acceptance criterion in the story file is met
+2. Check off each criterion (`- [ ]` → `- [x]`) in the story file and commit the update
+3. Run the full test suite: `go test ./...`
 
 ## Test strategy — Double Loop TDD
 
@@ -42,12 +44,12 @@ Write a failing E2E test first. Drive implementation with failing unit tests. E2
 
 ## License
 
-Every `.go` file must start with `// SPDX-License-Identifier: AGPL-3.0-or-later`. The `license` CI job enforces this via `addlicense -check`.
+Every `.go` file must carry `// SPDX-License-Identifier: AGPL-3.0-or-later`. The pre-commit hook adds it automatically; the `license` CI job enforces it via `skywalking-eyes`.
 
 ## Key constraints
 
 - No built-ins in core — scalars, filters, auth all come via plugins
-- No N:M or 1:1 relations — Post-MVP
+- No N:M or 1:1 relations
 - FK name = field name (`kanton_id`, not `kanton_type_id`)
 - No mocks in E2E — real PostgreSQL only
-- YAGNI — no code for Post-MVP features
+- YAGNI — implement only what the active story requires
