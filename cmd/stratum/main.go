@@ -18,10 +18,15 @@
 package main
 
 import (
+	"database/sql"
 	"log"
 	"net/http"
 	"os"
 
+	_ "github.com/jackc/pgx/v5/stdlib"
+
+	"github.com/tstangenberg/stratum/internal/plugin"
+	dbplugin "github.com/tstangenberg/stratum/internal/plugin/database"
 	"github.com/tstangenberg/stratum/internal/server"
 )
 
@@ -41,6 +46,23 @@ func main() {
 }
 
 func run(addr string) error {
-	srv := server.NewStratumServer()
+	plugins := defaultPlugins()
+	srv := server.NewStratumServer(plugins...)
 	return http.ListenAndServe(addr, server.Handler(srv))
+}
+
+func defaultPlugins() []plugin.HealthPlugin {
+	var plugins []plugin.HealthPlugin
+	dsn := os.Getenv("DATABASE_URL")
+	if dsn == "" {
+		log.Printf("DATABASE_URL not set; database health check disabled")
+		return plugins
+	}
+	db, err := sql.Open("pgx", dsn)
+	if err != nil {
+		log.Printf("failed to open database: %v; database health check disabled", err)
+		return plugins
+	}
+	plugins = append(plugins, dbplugin.New(db))
+	return plugins
 }
