@@ -27,10 +27,14 @@ Go 1.26 · PostgreSQL · `vektah/gqlparser` (SDL parsing) · `graphql-go/graphql
 1. Verify every acceptance criterion in the story file is met
 2. Check off each criterion (`- [ ]` → `- [x]`) in the story file and commit the update
 3. Run the full test suite: `go test ./...`
+4. Ensure 100% coverage for all internal packages: `go test ./internal/... -cover`
 
 ## Test strategy — Double Loop TDD
 
 Write a failing E2E test first. Drive implementation with failing unit tests. E2E tests run against real PostgreSQL (testcontainers) — no mocks.
+
+- Every happy path use case must have an E2E test
+- Failure and error cases may use mocks in unit tests
 
 ## Go rules
 
