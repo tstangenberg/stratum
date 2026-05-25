@@ -18,12 +18,15 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/tstangenberg/stratum/internal/plugin"
 )
 
 var h = Handler(NewStratumServer())
@@ -64,8 +67,6 @@ func TestLiveness(t *testing.T) {
 		t.Fatalf("expected status=ok, got %q", body["status"])
 	}
 }
-
-func TestReadiness(t *testing.T)    { assert501(t, http.MethodGet, "/api/v1/health/ready") }
 func TestInfo(t *testing.T)         { assert501(t, http.MethodGet, "/api/v1/info") }
 func TestListSchemas(t *testing.T)  { assert501(t, http.MethodGet, "/api/v1/schemas") }
 func TestDeleteSchema(t *testing.T) { assert501(t, http.MethodDelete, "/api/v1/schemas/foo") }
@@ -98,5 +99,144 @@ func TestNotImplementedHandler_NonSentinelError(t *testing.T) {
 
 	if w.Code != http.StatusInternalServerError {
 		t.Fatalf("expected 500, got %d", w.Code)
+	}
+}
+
+// stubHealthPlugin is a test-only HealthPlugin.
+type stubHealthPlugin struct {
+	name    string
+	status  string
+	details map[string]any
+}
+
+func (s stubHealthPlugin) Name() string { return s.name }
+func (s stubHealthPlugin) Check(_ context.Context) plugin.HealthStatus {
+	return plugin.HealthStatus{Status: s.status, Details: s.details}
+}
+
+func doReadiness(t *testing.T, plugins ...plugin.HealthPlugin) *http.Response {
+	t.Helper()
+	srv := Handler(NewStratumServer(plugins...))
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/health/ready", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	return w.Result()
+}
+
+func TestReadiness_NoPlugins(t *testing.T) {
+	res := doReadiness(t)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", res.StatusCode)
+	}
+	var body struct {
+		Status     string         `json:"status"`
+		Components map[string]any `json:"components"`
+	}
+	if err := json.NewDecoder(res.Body).Decode(&body); err != nil {
+		t.Fatalf("body not JSON: %v", err)
+	}
+	if body.Status != "ok" {
+		t.Fatalf("expected status=ok, got %q", body.Status)
+	}
+	if body.Components == nil {
+		t.Fatalf("expected components to be present, got nil")
+	}
+}
+
+func TestReadiness_AllOK(t *testing.T) {
+	res := doReadiness(t,
+		stubHealthPlugin{"database", plugin.StatusOK, nil},
+		stubHealthPlugin{"cache", plugin.StatusOK, nil},
+	)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", res.StatusCode)
+	}
+	var body struct {
+		Status     string                    `json:"status"`
+		Components map[string]map[string]any `json:"components"`
+	}
+	if err := json.NewDecoder(res.Body).Decode(&body); err != nil {
+		t.Fatalf("body not JSON: %v", err)
+	}
+	if body.Status != "ok" {
+		t.Fatalf("expected status=ok, got %q", body.Status)
+	}
+	if len(body.Components) != 2 {
+		t.Fatalf("expected 2 components, got %d", len(body.Components))
+	}
+}
+
+func TestReadiness_Degraded(t *testing.T) {
+	res := doReadiness(t,
+		stubHealthPlugin{"database", plugin.StatusOK, nil},
+		stubHealthPlugin{"cache", plugin.StatusError, nil},
+	)
+	if res.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d", res.StatusCode)
+	}
+	var body struct {
+		Status     string                    `json:"status"`
+		Components map[string]map[string]any `json:"components"`
+	}
+	if err := json.NewDecoder(res.Body).Decode(&body); err != nil {
+		t.Fatalf("body not JSON: %v", err)
+	}
+	if body.Status != "degraded" {
+		t.Fatalf("expected status=degraded, got %q", body.Status)
+	}
+}
+
+// slowHealthPlugin is a test plugin that never returns.
+type slowHealthPlugin struct{}
+
+func (s slowHealthPlugin) Name() string { return "slow" }
+func (s slowHealthPlugin) Check(ctx context.Context) plugin.HealthStatus {
+	<-ctx.Done()
+	return plugin.HealthStatus{Status: plugin.StatusError}
+}
+
+func TestReadiness_Timeout(t *testing.T) {
+	srv := Handler(NewStratumServer(slowHealthPlugin{}))
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/health/ready", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	res := w.Result()
+	// Should return 503 (degraded) when timeout occurs
+	if res.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d", res.StatusCode)
+	}
+	var body struct {
+		Status     string                    `json:"status"`
+		Components map[string]map[string]any `json:"components"`
+	}
+	if err := json.NewDecoder(res.Body).Decode(&body); err != nil {
+		t.Fatalf("body not JSON: %v", err)
+	}
+	if body.Status != "degraded" {
+		t.Fatalf("expected status=degraded, got %q", body.Status)
+	}
+}
+
+func TestReadiness_WithDetails(t *testing.T) {
+	res := doReadiness(t,
+		stubHealthPlugin{"database", plugin.StatusOK, map[string]any{"latency_ms": 5}},
+		stubHealthPlugin{"cache", plugin.StatusOK, map[string]any{"latency_ms": 2}},
+	)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", res.StatusCode)
+	}
+	var body struct {
+		Status     string                    `json:"status"`
+		Components map[string]map[string]any `json:"components"`
+	}
+	if err := json.NewDecoder(res.Body).Decode(&body); err != nil {
+		t.Fatalf("body not JSON: %v", err)
+	}
+	if body.Status != "ok" {
+		t.Fatalf("expected status=ok, got %q", body.Status)
+	}
+	if len(body.Components) != 2 {
+		t.Fatalf("expected 2 components, got %d", len(body.Components))
 	}
 }
