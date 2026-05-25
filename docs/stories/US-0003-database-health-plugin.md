@@ -1,7 +1,7 @@
 ---
 id: US-003
 tags: [health, observability, database]
-status: open
+status: in-progress
 ---
 
 # US-0003: Database health plugin
