@@ -1,7 +1,7 @@
 ---
 id: US-0025
 tags: [ci, dev-tooling, workflow]
-status: open
+status: ready
 ---
 
 # US-0025: Branch naming convention for stories
