@@ -1,7 +1,7 @@
 ---
 id: US-0035
 tags: [config, api]
-status: in-review
+status: done
 ---
 
 # US-0035: Configurable HTTP listen address
