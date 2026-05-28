@@ -1,7 +1,7 @@
 ---
 id: US-004
 tags: [schema, scalar]
-status: done
+status: in-review
 ---
 
 # US-0004: Upload a schema with a String field
