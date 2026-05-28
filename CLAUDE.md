@@ -22,6 +22,14 @@ Go 1.26 · PostgreSQL · `vektah/gqlparser` (SDL parsing) · `graphql-go/graphql
 - Never commit directly to `main` — always a PR
 - No `Co-Authored-By` lines in commit messages
 
+## Story lifecycle
+
+`draft` → `ready` → `in-progress` → `in-review` → `done`
+
+- Set status to `in-progress` when starting work on the branch
+- Set status to `in-review` when opening a PR
+- Set status to `done` when the PR is merged
+
 ## Before opening a PR
 
 1. Verify every acceptance criterion in the story file is met
