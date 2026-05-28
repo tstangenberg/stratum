@@ -86,3 +86,11 @@ func TestParseSDL_InvalidSDL(t *testing.T) {
 		t.Fatal("expected error for invalid SDL")
 	}
 }
+
+func TestParseSDL_NoObjectTypes(t *testing.T) {
+	// SDL valid but only defines the built-in Query type — filtered out, yielding no user types
+	_, err := schema.ParseSDL(`type Query { id: ID }`)
+	if err == nil {
+		t.Fatal("expected error when SDL has no non-builtin object types")
+	}
+}

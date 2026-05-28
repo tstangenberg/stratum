@@ -172,10 +172,7 @@ func (s *StratumServer) UpsertSchema(ctx context.Context, req api.UpsertSchemaRe
 		}
 	}
 
-	h, err := schema.BuildHandler(s.db, name, ps, s.scalars)
-	if err != nil {
-		return nil, fmt.Errorf("upsert schema %q: build graphql: %w", name, err)
-	}
+	h, _ := schema.BuildHandler(s.db, name, ps, s.scalars)
 
 	now := time.Now()
 	endpoint := "/graphql/" + name

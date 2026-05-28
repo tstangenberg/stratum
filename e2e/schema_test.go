@@ -135,7 +135,7 @@ func TestUploadSchemaString(t *testing.T) {
 	}
 
 	// ── 3. Read back via GraphQL get ────────────────────────────────────────
-	gqlGet := fmt.Sprintf(`{"query":"{ location { get(id: %q) { id name } } }"}`, createdID)
+	gqlGet := fmt.Sprintf(`{"query":"{ location { get(id: \"%s\") { id name } } }"}`, createdID)
 	req = httptest.NewRequest(http.MethodPost, "/graphql/locations",
 		strings.NewReader(gqlGet))
 	req.Header.Set("Content-Type", "application/json")
