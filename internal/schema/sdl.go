@@ -25,10 +25,13 @@ import (
 	"github.com/vektah/gqlparser/v2/ast"
 )
 
-// builtinTypes lists GraphQL built-in type names to skip during parsing.
-var builtinTypes = map[string]bool{
-	"String": true, "Int": true, "Float": true, "Boolean": true, "ID": true,
-	"Query": true, "Mutation": true, "Subscription": true,
+func isBuiltinType(name string) bool {
+	switch name {
+	case "String", "Int", "Float", "Boolean", "ID",
+		"Query", "Mutation", "Subscription":
+		return true
+	}
+	return false
 }
 
 // ParseSDL parses a GraphQL SDL string and extracts user-defined object types.
@@ -51,7 +54,7 @@ func ParseSDL(sdl string) (*ParsedSchema, error) {
 		if strings.HasPrefix(name, "__") {
 			continue
 		}
-		if builtinTypes[name] {
+		if isBuiltinType(name) {
 			continue
 		}
 
