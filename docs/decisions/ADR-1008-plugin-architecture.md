@@ -20,7 +20,7 @@ Chosen: **seven distinct plugin types**, each with a dedicated Go interface:
 
 | Type | Interface | Responsibility |
 |------|-----------|---------------|
-| `ScalarPlugin` | `Name`, `ColumnType`, `Serialize`, `ParseValue`, `ParseLiteral` | Maps a GraphQL scalar to a PostgreSQL column type and handles serialization |
+| `ScalarPlugin` | `Name`, `ColumnType`, `GraphQLType` | Maps a GraphQL scalar to a PostgreSQL column type and a `graphql-go` scalar type; serialization is delegated to the `*graphql.Scalar` value returned by `GraphQLType` |
 | `FilterPlugin` | `Name`, `ScalarType`, `Operators`, `ToSQL` | Adds filter operators (`eq`, `gte`, etc.) for a specific scalar type |
 | `PaginationPlugin` | `Name`, `Arguments`, `ApplySQL`, `WrapResponse` | Adds pagination arguments (`offset`, cursor) to `list` queries |
 | `DMLHookPlugin` | `Name`, `Directives`, `Events`, `Execute` | Runs before/after INSERT, UPDATE, SELECT |
