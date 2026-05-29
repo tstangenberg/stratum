@@ -19,13 +19,11 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"log"
 	"net/http"
 	"os"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	_ "github.com/jackc/pgx/v5/stdlib"
 
 	"github.com/tstangenberg/stratum/internal/plugin"
 	dbplugin "github.com/tstangenberg/stratum/internal/plugin/database"
@@ -48,10 +46,7 @@ func main() {
 }
 
 func run(addr string) error {
-	db, pool, plugins := defaultPlugins()
-	if db != nil {
-		defer db.Close()
-	}
+	pool, plugins := defaultPlugins()
 	if pool != nil {
 		defer pool.Close()
 	}
@@ -62,21 +57,16 @@ func run(addr string) error {
 	return http.ListenAndServe(addr, server.Handler(srv))
 }
 
-func defaultPlugins() (*sql.DB, *pgxpool.Pool, []plugin.HealthPlugin) {
+func defaultPlugins() (*pgxpool.Pool, []plugin.HealthPlugin) {
 	dsn := os.Getenv("DATABASE_URL")
 	if dsn == "" {
 		log.Printf("DATABASE_URL not set; database health check and schema operations disabled")
-		return nil, nil, nil
-	}
-	db, err := sql.Open("pgx", dsn)
-	if err != nil {
-		log.Printf("failed to open database: %v", err)
-		return nil, nil, nil
+		return nil, nil
 	}
 	pool, err := pgxpool.New(context.Background(), dsn)
 	if err != nil {
-		log.Printf("failed to create pgxpool: %v; schema operations disabled", err)
-		return db, nil, []plugin.HealthPlugin{dbplugin.New(db)}
+		log.Printf("failed to create pgxpool: %v", err)
+		return nil, nil
 	}
-	return db, pool, []plugin.HealthPlugin{dbplugin.New(db)}
+	return pool, []plugin.HealthPlugin{dbplugin.New(pool)}
 }
