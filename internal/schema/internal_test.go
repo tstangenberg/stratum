@@ -18,7 +18,9 @@
 package schema
 
 import (
+	"errors"
 	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/graphql-go/graphql"
@@ -109,5 +111,32 @@ func TestScalarToGraphQL_IDType(t *testing.T) {
 	}
 	if out != graphql.ID {
 		t.Errorf("got %v, want graphql.ID", out)
+	}
+}
+
+type stubRows struct {
+	nextN   int
+	called  int
+	scanErr error
+	closed  bool
+}
+
+func (r *stubRows) Close()              { r.closed = true }
+func (r *stubRows) Err() error          { return nil }
+func (r *stubRows) Next() bool          { r.called++; return r.called <= r.nextN }
+func (r *stubRows) Scan(_ ...any) error { return r.scanErr }
+
+func TestScanList_ScanError(t *testing.T) {
+	scanErr := errors.New("broken scan")
+	rows := &stubRows{nextN: 1, scanErr: scanErr}
+	_, err := scanList(rows, []string{"id", "name"}, "test_t")
+	if err == nil {
+		t.Fatal("expected error from scanList")
+	}
+	if !strings.Contains(err.Error(), "scan") {
+		t.Errorf("error = %q, want it to mention scan", err)
+	}
+	if !rows.closed {
+		t.Error("expected rows to be closed")
 	}
 }

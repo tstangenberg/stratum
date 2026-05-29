@@ -183,11 +183,23 @@ func fieldNames(t TypeDef) []string {
 	return names
 }
 
+// scannable is the subset of pgx.Rows used by scanList.
+type scannable interface {
+	Close()
+	Next() bool
+	Scan(dest ...any) error
+	Err() error
+}
+
 func listRecords(ctx context.Context, db *pgxpool.Pool, tbl string, cols []string) ([]map[string]any, error) {
 	rows, err := db.Query(ctx, fmt.Sprintf("SELECT %s FROM %s", strings.Join(cols, ", "), tbl))
 	if err != nil {
 		return nil, fmt.Errorf("list %s: %w", tbl, err)
 	}
+	return scanList(rows, cols, tbl)
+}
+
+func scanList(rows scannable, cols []string, tbl string) ([]map[string]any, error) {
 	defer rows.Close()
 	var result []map[string]any
 	for rows.Next() {
