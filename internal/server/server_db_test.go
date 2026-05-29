@@ -83,6 +83,23 @@ func TestUpsertSchema_CreateTableError(t *testing.T) {
 	}
 }
 
+func TestUpsertSchema_BuildHandlerError(t *testing.T) {
+	pool := startServerPool(t)
+	srv := NewStratumServer().WithDB(pool)
+	h := Handler(srv)
+
+	sdl := `type Foo { id: ID! name: String! } type FooQuery { id: ID! name: String! }`
+	body, _ := json.Marshal(api.SchemaUploadRequest{Sdl: sdl})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/schemas/locations", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500 when BuildHandler fails, got %d — %s", w.Code, w.Body.String())
+	}
+}
+
 func TestUpsertSchema_Success(t *testing.T) {
 	pool := startServerPool(t)
 	srv := NewStratumServer().WithDB(pool)

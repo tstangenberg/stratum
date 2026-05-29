@@ -36,14 +36,8 @@ import (
 
 var errNotImplemented = errors.New("not implemented")
 
-// UnimplementedStrictServerInterface returns 501 for every operation.
-// Embed it in StratumServer and override methods as they are implemented.
-type UnimplementedStrictServerInterface struct{}
-
-// StratumServer is the main server struct. Embed UnimplementedStrictServerInterface
-// to get 501 responses for unimplemented endpoints, then override methods one by one.
+// StratumServer is the main server struct.
 type StratumServer struct {
-	UnimplementedStrictServerInterface
 	healthPlugins []plugin.HealthPlugin
 	db            *pgxpool.Pool
 	schemas       *schema.Store
@@ -172,7 +166,10 @@ func (s *StratumServer) UpsertSchema(ctx context.Context, req api.UpsertSchemaRe
 		}
 	}
 
-	h, _ := schema.BuildHandler(s.db, name, ps, s.scalars)
+	h, err := schema.BuildHandler(s.db, name, ps, s.scalars)
+	if err != nil {
+		return nil, fmt.Errorf("upsert schema %q: build handler: %w", name, err)
+	}
 
 	now := time.Now()
 	endpoint := "/graphql/" + name

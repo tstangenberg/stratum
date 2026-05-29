@@ -73,6 +73,21 @@ func TestBuildHandler_UnknownScalarInField(t *testing.T) {
 	}
 }
 
+func TestBuildHandler_SchemaConstructionError(t *testing.T) {
+	ps := &schema.ParsedSchema{
+		Types: []schema.TypeDef{
+			{Name: "Query", Fields: []schema.FieldDef{
+				{Name: "id", Type: "ID", NonNull: true},
+				{Name: "name", Type: "String", NonNull: true},
+			}},
+		},
+	}
+	_, err := schema.BuildHandler(nil, "test", ps, stringScalars())
+	if err == nil {
+		t.Fatal("expected error when type name collides with root Query")
+	}
+}
+
 func TestGQLHandler_BadJSON(t *testing.T) {
 	h, err := schema.BuildHandler(nil, "test", locationSchema(), stringScalars())
 	if err != nil {

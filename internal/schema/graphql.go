@@ -119,7 +119,7 @@ func BuildHandler(db *pgxpool.Pool, schemaName string, ps *ParsedSchema, scalars
 		}
 	}
 
-	gqlSchema, _ := graphql.NewSchema(graphql.SchemaConfig{
+	gqlSchema, err := graphql.NewSchema(graphql.SchemaConfig{
 		Query: graphql.NewObject(graphql.ObjectConfig{
 			Name:   "Query",
 			Fields: queryFields,
@@ -129,6 +129,9 @@ func BuildHandler(db *pgxpool.Pool, schemaName string, ps *ParsedSchema, scalars
 			Fields: mutationFields,
 		}),
 	})
+	if err != nil {
+		return nil, fmt.Errorf("graphql: build schema: %w", err)
+	}
 	return &gqlHandler{schema: gqlSchema}, nil
 }
 
@@ -193,7 +196,9 @@ func listRecords(ctx context.Context, db *pgxpool.Pool, tbl string, cols []strin
 		for i := range vals {
 			ptrs[i] = &vals[i]
 		}
-		rows.Scan(ptrs...) //nolint:errcheck
+		if err := rows.Scan(ptrs...); err != nil {
+			return nil, fmt.Errorf("list %s: scan: %w", tbl, err)
+		}
 		row := make(map[string]any, len(cols))
 		for i, name := range cols {
 			row[name] = vals[i]
