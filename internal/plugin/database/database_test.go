@@ -30,7 +30,7 @@ import (
 
 type mockPinger struct{ err error }
 
-func (m *mockPinger) PingContext(_ context.Context) error { return m.err }
+func (m *mockPinger) Ping(_ context.Context) error { return m.err }
 
 func TestDatabasePlugin_Name(t *testing.T) {
 	p := database.New(&mockPinger{})

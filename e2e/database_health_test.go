@@ -19,14 +19,13 @@ package e2e
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
 
-	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -58,13 +57,13 @@ func TestDatabaseHealth_OK(t *testing.T) {
 		t.Fatalf("get connection string: %v", err)
 	}
 
-	db, err := sql.Open("pgx", dsn)
+	pool, err := pgxpool.New(ctx, dsn)
 	if err != nil {
-		t.Fatalf("open db: %v", err)
+		t.Fatalf("create pool: %v", err)
 	}
-	t.Cleanup(func() { _ = db.Close() })
+	t.Cleanup(func() { pool.Close() })
 
-	handler := server.Handler(server.NewStratumServer(dbplugin.New(db)))
+	handler := server.Handler(server.NewStratumServer(dbplugin.New(pool)))
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/health/ready", nil)
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
@@ -91,13 +90,13 @@ func TestDatabaseHealth_OK(t *testing.T) {
 }
 
 func TestDatabaseHealth_Unreachable(t *testing.T) {
-	db, err := sql.Open("pgx", "postgres://testuser:testpass@localhost:1/testdb?sslmode=disable")
+	pool, err := pgxpool.New(context.Background(), "postgres://testuser:testpass@localhost:1/testdb?sslmode=disable")
 	if err != nil {
-		t.Fatalf("open db: %v", err)
+		t.Fatalf("create pool: %v", err)
 	}
-	t.Cleanup(func() { _ = db.Close() })
+	t.Cleanup(func() { pool.Close() })
 
-	handler := server.Handler(server.NewStratumServer(dbplugin.New(db)))
+	handler := server.Handler(server.NewStratumServer(dbplugin.New(pool)))
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/health/ready", nil)
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
