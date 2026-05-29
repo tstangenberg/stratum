@@ -1,7 +1,7 @@
 ---
 id: US-005
 tags: [data, mutation]
-status: open
+status: cancelled
 ---
 
 # US-0005: Create a record
