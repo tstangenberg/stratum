@@ -1,7 +1,7 @@
 ---
 id: US-013
 tags: [schema, scalar]
-status: in-review
+status: done
 ---
 
 # US-0013: Schema with an Int field
