@@ -25,6 +25,10 @@ import (
 	floatscalar "github.com/tstangenberg/stratum/internal/plugin/scalar/float"
 )
 
+// TestFloatPlugin verifies the Plugin contract (Name, ColumnType, GraphQLType).
+// Serialize/ParseValue/ParseLiteral are not tested here because the plugin
+// delegates directly to graphql.Float — the built-in scalar already covers
+// float and integer literal handling.
 func TestFloatPlugin(t *testing.T) {
 	p := floatscalar.Plugin{}
 

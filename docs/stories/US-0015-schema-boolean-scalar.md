@@ -1,7 +1,7 @@
 ---
 id: US-015
 tags: [schema, scalar]
-status: open
+status: in-review
 ---
 
 # US-0015: Schema with a Boolean field

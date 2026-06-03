@@ -235,6 +235,9 @@ func TestSchemaFloatScalar(t *testing.T) {
 	}
 
 	// ── 3. Create a record with decimal float values ────────────────────────
+	// Exact float equality is safe here: 47.3769, 8.5417, 1.0, 2.0 are all
+	// exactly representable in float64 and round-trip through DOUBLE PRECISION
+	// → JSON → float64 without loss.
 	gqlCreate := `{"query":"mutation { coordinate { create(input: {lat: 47.3769, lon: 8.5417}) { id lat lon } } }"}`
 	req = httptest.NewRequest(http.MethodPost, "/graphql/coords",
 		strings.NewReader(gqlCreate))
