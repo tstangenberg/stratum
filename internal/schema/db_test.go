@@ -32,6 +32,7 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 
 	"github.com/tstangenberg/stratum/internal/plugin/scalar"
+	idscalar "github.com/tstangenberg/stratum/internal/plugin/scalar/id"
 	stringscalar "github.com/tstangenberg/stratum/internal/plugin/scalar/string"
 	"github.com/tstangenberg/stratum/internal/schema"
 )
@@ -70,7 +71,7 @@ func startPool(t *testing.T) *pgxpool.Pool {
 func schemaScalars() map[string]scalar.Plugin {
 	return map[string]scalar.Plugin{
 		"String": stringscalar.Plugin{},
-		"ID":     stringscalar.Plugin{},
+		"ID":     idscalar.Plugin{},
 	}
 }
 
