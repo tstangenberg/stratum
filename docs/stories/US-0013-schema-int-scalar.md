@@ -1,7 +1,7 @@
 ---
 id: US-013
 tags: [schema, scalar]
-status: open
+status: in-progress
 ---
 
 # US-0013: Schema with an Int field
@@ -16,10 +16,10 @@ status: open
 
 ## Acceptance Criteria
 
-- [ ] Schema with an `Int!` field is accepted
-- [ ] PostgreSQL column type is `INTEGER`
-- [ ] Integer values can be written via mutation and read back correctly
-- [ ] Out-of-range values (exceeding 32-bit integer) return a GraphQL error
+- [x] Schema with an `Int!` field is accepted
+- [x] PostgreSQL column type is `INTEGER`
+- [x] Integer values can be written via mutation and read back correctly
+- [x] Out-of-range values (exceeding 32-bit integer) return a GraphQL error
 
 ## E2E Tests
 
