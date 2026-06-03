@@ -148,7 +148,7 @@ func TestIntScalar_ParseValue(t *testing.T) {
 		{"int in range", 42, 42},
 		{"int overflow", int64(math.MaxInt32 + 1), nil},
 		{"float64 in range", float64(42), 42},
-		{"string", "hello", nil},
+		{"string", "hello", nil}, // no explicit string case; falls through to default: return nil
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -164,6 +164,6 @@ func TestIntScalar_IsStrictInt32(t *testing.T) {
 	p := intscalar.Plugin{}
 	gqlType := p.GraphQLType()
 	if gqlType == graphql.Int {
-		t.Log("using built-in graphql.Int — verify it handles 32-bit range")
+		t.Fatal("GraphQLType() must not return the built-in graphql.Int")
 	}
 }

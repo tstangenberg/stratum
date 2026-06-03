@@ -26,25 +26,6 @@ import (
 	"github.com/tstangenberg/stratum/internal/plugin/scalar"
 )
 
-var int32Scalar = graphql.NewScalar(graphql.ScalarConfig{
-	Name: "Int",
-	Description: "The `Int` scalar type represents non-fractional signed whole numeric " +
-		"values. Int can represent values between -(2^31) and 2^31 - 1.",
-	Serialize:  coerceInt32,
-	ParseValue: coerceInt32,
-	ParseLiteral: func(valueAST ast.Value) any {
-		switch v := valueAST.(type) {
-		case *ast.IntValue:
-			n, err := strconv.ParseInt(v.Value, 10, 32)
-			if err != nil {
-				return nil
-			}
-			return int(n)
-		}
-		return nil
-	},
-})
-
 func coerceInt32(value any) any {
 	switch v := value.(type) {
 	case int:
@@ -73,6 +54,26 @@ type Plugin struct{}
 
 var _ scalar.Plugin = Plugin{}
 
-func (Plugin) Name() string                 { return "Int" }
-func (Plugin) ColumnType() string           { return "INTEGER" }
-func (Plugin) GraphQLType() *graphql.Scalar { return int32Scalar }
+func (Plugin) Name() string       { return "Int" }
+func (Plugin) ColumnType() string { return "INTEGER" }
+
+func (Plugin) GraphQLType() *graphql.Scalar {
+	return graphql.NewScalar(graphql.ScalarConfig{
+		Name: "Int",
+		Description: "The `Int` scalar type represents non-fractional signed whole numeric " +
+			"values. Int can represent values between -(2^31) and 2^31 - 1.",
+		Serialize:  coerceInt32,
+		ParseValue: coerceInt32,
+		ParseLiteral: func(valueAST ast.Value) any {
+			switch v := valueAST.(type) {
+			case *ast.IntValue:
+				n, err := strconv.ParseInt(v.Value, 10, 32)
+				if err != nil {
+					return nil
+				}
+				return int(n)
+			}
+			return nil
+		},
+	})
+}
