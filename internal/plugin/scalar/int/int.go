@@ -20,6 +20,7 @@ package intscalar
 import (
 	"math"
 	"strconv"
+	"sync"
 
 	"github.com/graphql-go/graphql"
 	"github.com/graphql-go/graphql/language/ast"
@@ -57,23 +58,31 @@ var _ scalar.Plugin = Plugin{}
 func (Plugin) Name() string       { return "Int" }
 func (Plugin) ColumnType() string { return "INTEGER" }
 
+var (
+	int32Once   sync.Once
+	int32Scalar *graphql.Scalar
+)
+
 func (Plugin) GraphQLType() *graphql.Scalar {
-	return graphql.NewScalar(graphql.ScalarConfig{
-		Name: "Int",
-		Description: "The `Int` scalar type represents non-fractional signed whole numeric " +
-			"values. Int can represent values between -(2^31) and 2^31 - 1.",
-		Serialize:  coerceInt32,
-		ParseValue: coerceInt32,
-		ParseLiteral: func(valueAST ast.Value) any {
-			switch v := valueAST.(type) {
-			case *ast.IntValue:
-				n, err := strconv.ParseInt(v.Value, 10, 32)
-				if err != nil {
-					return nil
+	int32Once.Do(func() {
+		int32Scalar = graphql.NewScalar(graphql.ScalarConfig{
+			Name: "Int",
+			Description: "The `Int` scalar type represents non-fractional signed whole numeric " +
+				"values. Int can represent values between -(2^31) and 2^31 - 1.",
+			Serialize:  coerceInt32,
+			ParseValue: coerceInt32,
+			ParseLiteral: func(valueAST ast.Value) any {
+				switch v := valueAST.(type) {
+				case *ast.IntValue:
+					n, err := strconv.ParseInt(v.Value, 10, 32)
+					if err != nil {
+						return nil
+					}
+					return int(n)
 				}
-				return int(n)
-			}
-			return nil
-		},
+				return nil
+			},
+		})
 	})
+	return int32Scalar
 }
