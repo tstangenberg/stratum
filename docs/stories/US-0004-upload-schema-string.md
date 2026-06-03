@@ -16,11 +16,11 @@ This is the foundational story — it proves the full pipeline works end-to-end:
 
 ## Acceptance Criteria
 
-- [ ] `POST /schemas/{name}` with a valid SDL returns HTTP 200
-- [ ] Response includes `name`, `status: "applied"`, `version: 1`, and `graphql_endpoint`
-- [ ] A PostgreSQL table is created with a `TEXT` column for the String field
-- [ ] `GET /graphql/{name}` responds to a query immediately after upload
-- [ ] A record can be created and read back with the String value intact
+- [x] `POST /schemas/{name}` with a valid SDL returns HTTP 200
+- [x] Response includes `name`, `status: "applied"`, `version: 1`, and `graphql_endpoint`
+- [x] A PostgreSQL table is created with a `TEXT` column for the String field
+- [x] `GET /graphql/{name}` responds to a query immediately after upload
+- [x] A record can be created and read back with the String value intact
 
 ## E2E Tests
 

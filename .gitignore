@@ -27,3 +27,6 @@ coverage.out
 
 # Local agent plans
 docs/superpowers/
+
+# Git worktrees
+.worktrees/

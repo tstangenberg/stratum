@@ -26,6 +26,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/tstangenberg/stratum/internal/plugin"
 )
 
@@ -183,6 +184,90 @@ func TestReadiness_Degraded(t *testing.T) {
 	}
 	if body.Status != "degraded" {
 		t.Fatalf("expected status=degraded, got %q", body.Status)
+	}
+}
+
+func TestValidSchemaName(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  bool
+	}{
+		{"empty", "", false},
+		{"too long", "a" + strings.Repeat("b", 63), false},
+		{"starts with digit", "1abc", false},
+		{"starts with uppercase", "Abc", false},
+		{"starts with underscore", "_abc", false},
+		{"valid simple", "locations", true},
+		{"valid with underscore", "my_schema", true},
+		{"valid with digits", "schema1", true},
+		{"exactly 63 chars", "a" + strings.Repeat("b", 62), true},
+		{"contains uppercase", "MySchema", false},
+		{"contains hyphen", "my-schema", false},
+		{"single char", "a", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := validSchemaName(tt.input)
+			if got != tt.want {
+				t.Errorf("validSchemaName(%q) = %v, want %v", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestWithDB_EnablesUpsert(t *testing.T) {
+	// WithDB should set s.db so that UpsertSchema proceeds past the nil check.
+	// Use a zero-value pool pointer (non-nil) to satisfy the nil guard without connecting.
+	pool := new(pgxpool.Pool)
+	srv := NewStratumServer().WithDB(pool)
+
+	// Invalid schema name triggers 400 before any DB call — proves WithDB was set.
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/schemas/INVALID_NAME",
+		strings.NewReader(`{"sdl":"type Location { id: ID! }"}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	Handler(srv).ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for invalid name with DB set, got %d — body: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestUpsertSchema_InvalidName(t *testing.T) {
+	pool := new(pgxpool.Pool)
+	srv := NewStratumServer().WithDB(pool)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/schemas/INVALID",
+		strings.NewReader(`{"sdl":"type Location { id: ID! }"}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	Handler(srv).ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", w.Code)
+	}
+}
+
+func TestUpsertSchema_InvalidSDL(t *testing.T) {
+	pool := new(pgxpool.Pool)
+	srv := NewStratumServer().WithDB(pool)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/schemas/locations",
+		strings.NewReader(`{"sdl":"type { broken"}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	Handler(srv).ServeHTTP(w, req)
+	if w.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("expected 422, got %d", w.Code)
+	}
+}
+
+func TestServeGraphQL_NotFound(t *testing.T) {
+	srv := NewStratumServer()
+	req := httptest.NewRequest(http.MethodPost, "/graphql/nonexistent",
+		strings.NewReader(`{"query":"{ location { list { id } } }"}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	Handler(srv).ServeHTTP(w, req)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", w.Code)
 	}
 }
 

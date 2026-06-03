@@ -21,30 +21,45 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"sync"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/tstangenberg/stratum/internal/api"
 	"github.com/tstangenberg/stratum/internal/plugin"
+	"github.com/tstangenberg/stratum/internal/plugin/scalar"
+	stringscalar "github.com/tstangenberg/stratum/internal/plugin/scalar/string"
+	"github.com/tstangenberg/stratum/internal/schema"
 )
 
 var errNotImplemented = errors.New("not implemented")
 
-// UnimplementedStrictServerInterface returns 501 for every operation.
-// Embed it in StratumServer and override methods as they are implemented.
-type UnimplementedStrictServerInterface struct{}
-
-// StratumServer is the main server struct. Embed UnimplementedStrictServerInterface
-// to get 501 responses for unimplemented endpoints, then override methods one by one.
+// StratumServer is the main server struct.
 type StratumServer struct {
-	UnimplementedStrictServerInterface
 	healthPlugins []plugin.HealthPlugin
+	db            *pgxpool.Pool
+	schemas       *schema.Store
+	scalars       map[string]scalar.Plugin
 }
 
 // NewStratumServer creates a new StratumServer with the given health plugins.
 func NewStratumServer(plugins ...plugin.HealthPlugin) *StratumServer {
-	return &StratumServer{healthPlugins: plugins}
+	return &StratumServer{
+		healthPlugins: plugins,
+		schemas:       schema.NewStore(),
+		scalars: map[string]scalar.Plugin{
+			"String": stringscalar.Plugin{},
+			"ID":     stringscalar.Plugin{},
+		},
+	}
+}
+
+// WithDB sets the PostgreSQL connection pool and returns the server for chaining.
+func (s *StratumServer) WithDB(db *pgxpool.Pool) *StratumServer {
+	s.db = db
+	return s
 }
 
 func (s *StratumServer) Liveness(_ context.Context, _ api.LivenessRequestObject) (api.LivenessResponseObject, error) {
@@ -120,12 +135,99 @@ func (s *StratumServer) GetSchema(_ context.Context, _ api.GetSchemaRequestObjec
 	return nil, errNotImplemented
 }
 
-func (s *StratumServer) UpsertSchema(_ context.Context, _ api.UpsertSchemaRequestObject) (api.UpsertSchemaResponseObject, error) {
-	return nil, errNotImplemented
+func (s *StratumServer) UpsertSchema(ctx context.Context, req api.UpsertSchemaRequestObject) (api.UpsertSchemaResponseObject, error) {
+	if s.db == nil {
+		return nil, errNotImplemented
+	}
+
+	name := req.Name
+	if !validSchemaName(name) {
+		return api.UpsertSchema400JSONResponse{
+			BadRequestJSONResponse: api.BadRequestJSONResponse{
+				Error:   "bad_request",
+				Message: "schema name must match [a-z][a-z0-9_]{0,62}",
+			},
+		}, nil
+	}
+
+	ps, err := schema.ParseSDL(req.Body.Sdl)
+	if err != nil {
+		return api.UpsertSchema422JSONResponse{
+			ValidationErrorJSONResponse: api.ValidationErrorJSONResponse{
+				Error:   "validation_failed",
+				Message: err.Error(),
+			},
+		}, nil
+	}
+
+	for _, t := range ps.Types {
+		if err := schema.CreateTable(ctx, s.db, name, t, s.scalars); err != nil {
+			return nil, fmt.Errorf("upsert schema %q: %w", name, err)
+		}
+	}
+
+	h, err := schema.BuildHandler(s.db, name, ps, s.scalars)
+	if err != nil {
+		return nil, fmt.Errorf("upsert schema %q: build handler: %w", name, err)
+	}
+
+	now := time.Now()
+	endpoint := "/graphql/" + name
+	s.schemas.Set(name, &schema.Schema{
+		Name:      name,
+		SDL:       req.Body.Sdl,
+		Parsed:    ps,
+		Version:   1,
+		CreatedAt: now,
+		UpdatedAt: now,
+		Handler:   h,
+	})
+
+	return api.UpsertSchema200JSONResponse{
+		Name:            name,
+		Status:          api.Applied,
+		Version:         1,
+		UpdatedAt:       now,
+		GraphqlEndpoint: &endpoint,
+	}, nil
 }
 
 func (s *StratumServer) GetSchemaStatus(_ context.Context, _ api.GetSchemaStatusRequestObject) (api.GetSchemaStatusResponseObject, error) {
 	return nil, errNotImplemented
+}
+
+// validSchemaName reports whether name is a safe PostgreSQL identifier prefix.
+func validSchemaName(name string) bool {
+	if len(name) == 0 || len(name) > 63 {
+		return false
+	}
+	for i, r := range name {
+		if i == 0 && !(r >= 'a' && r <= 'z') {
+			return false
+		}
+		if r >= 'a' && r <= 'z' {
+			continue
+		}
+		if r >= '0' && r <= '9' {
+			continue
+		}
+		if r == '_' {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+// serveGraphQL handles POST /graphql/{name} requests.
+func (s *StratumServer) serveGraphQL(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	sc, ok := s.schemas.Get(name)
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	sc.Handler.ServeHTTP(w, r)
 }
 
 // notImplementedHandler writes a consistent 501 JSON body.
@@ -142,7 +244,10 @@ func notImplementedHandler(w http.ResponseWriter, _ *http.Request, err error) {
 	})
 }
 
-// Handler returns a net/http handler for the Stratum API.
+// Handler returns an http.Handler for all Stratum routes:
+//
+//	/api/           → OpenAPI-generated REST endpoints
+//	/graphql/{name} → dynamic GraphQL endpoint per schema
 func Handler(srv *StratumServer) http.Handler {
 	strict := api.NewStrictHandlerWithOptions(srv, nil, api.StrictHTTPServerOptions{
 		RequestErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, err error) {
@@ -150,5 +255,8 @@ func Handler(srv *StratumServer) http.Handler {
 		},
 		ResponseErrorHandlerFunc: notImplementedHandler,
 	})
-	return api.Handler(strict)
+	mux := http.NewServeMux()
+	mux.Handle("/api/", api.Handler(strict))
+	mux.HandleFunc("POST /graphql/{name}", srv.serveGraphQL)
+	return mux
 }

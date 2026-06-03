@@ -27,9 +27,9 @@ import (
 // credentialsPattern matches the user:password portion of a DSN URL.
 var credentialsPattern = regexp.MustCompile(`://[^:@/]+:[^@/]*@`)
 
-// Pinger is satisfied by *sql.DB.
+// Pinger is satisfied by *pgxpool.Pool.
 type Pinger interface {
-	PingContext(ctx context.Context) error
+	Ping(ctx context.Context) error
 }
 
 // Plugin checks PostgreSQL connectivity.
@@ -45,7 +45,7 @@ func New(db Pinger) *Plugin {
 func (p *Plugin) Name() string { return "database" }
 
 func (p *Plugin) Check(ctx context.Context) plugin.HealthStatus {
-	if err := p.db.PingContext(ctx); err != nil {
+	if err := p.db.Ping(ctx); err != nil {
 		msg := credentialsPattern.ReplaceAllString(err.Error(), "://<redacted>@")
 		return plugin.HealthStatus{
 			Status:  plugin.StatusError,
