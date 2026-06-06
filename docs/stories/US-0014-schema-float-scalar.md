@@ -16,10 +16,10 @@ status: in-review
 
 ## Acceptance Criteria
 
-- [ ] Schema with a `Float!` field is accepted
-- [ ] PostgreSQL column type is `DOUBLE PRECISION`
-- [ ] Float values can be written via mutation and read back with decimal precision intact
-- [ ] Integer literals (e.g. `1`) are accepted as Float input
+- [x] Schema with a `Float!` field is accepted
+- [x] PostgreSQL column type is `DOUBLE PRECISION`
+- [x] Float values can be written via mutation and read back with decimal precision intact
+- [x] Integer literals (e.g. `1`) are accepted as Float input
 
 ## E2E Tests
 
