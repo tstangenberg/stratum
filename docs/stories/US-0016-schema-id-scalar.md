@@ -1,7 +1,7 @@
 ---
 id: US-016
 tags: [schema, scalar]
-status: in-review
+status: done
 ---
 
 # US-0016: Schema with an explicit ID field
