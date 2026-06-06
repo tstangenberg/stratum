@@ -30,27 +30,39 @@ issue: 42
 
 | Event | Action |
 |---|---|
-| Story file added to `open/` | Create GitHub Issue; write issue number into story frontmatter |
+| Story file added to `open/` or `ready/` without `issue` field | Create GitHub Issue; write issue number into story frontmatter |
 | Story file moved to `done/` | Close GitHub Issue |
 | Story file moved to `archive/` | Close GitHub Issue with label `won't fix` |
-| PR opened for `story/US-NNNN-*` | Add label `in progress` to linked issue |
+| Branch `story/US-NNNN-*` created | Add label `in-progress` to linked issue |
+| PR opened for `story/US-NNNN-*` | Replace label `in-progress` with `in-review` on linked issue |
 | PR merged | Issue closed automatically via `Closes #N` in PR description |
 
-### Issue body: story link
+### Issue body: story link and checksum
 
-Every GitHub Issue — whether created by the sync workflow or by the community — contains a `Story` field in a structured footer:
+Every GitHub Issue created by the sync workflow contains a structured footer:
 
 ```
-**Story:** [US-0038](link to story file in repo)
+**Story:** [US-0038](https://github.com/.../docs/stories/ready/US-0038-story-folder-structure.md)
+**Checksum:** `a3f8c2d1`
 ```
 
-If no story file exists yet (community-created issue, not yet triaged), the field is present but empty:
+Community-created issues (no story file yet) get a footer with empty fields via issue template:
 
 ```
 **Story:** —
+**Checksum:** —
 ```
 
-When a maintainer creates a story file and links it via `issue: <N>`, the sync workflow updates the issue footer with the story link.
+### Bidirectional content sync via checksum
+
+A checksum of the story content is stored in two places: the story frontmatter (`checksum: a3f8c2d1`) and the issue footer. When either side changes, the checksums diverge and the sync workflow updates the other side.
+
+| Direction | Trigger | Action |
+|---|---|---|
+| Story → Issue | Push to `main` | Recompute checksum; if it differs from issue footer → update issue body + footer checksum |
+| Issue → Story | `issues: edited` event | Extract checksum from issue footer; if it differs from story frontmatter → update story file + frontmatter checksum, commit to `main` |
+
+The checksum prevents sync loops: after a sync both sides have the same checksum, so the next trigger fires but takes no action.
 
 ### Community-created issues
 
@@ -60,12 +72,17 @@ Fully automated issue → story file creation is out of scope: community issues 
 
 ## Acceptance Criteria
 
-- [ ] A GitHub Actions workflow triggers when a story file is added to `open/` (push to `main`): creates a GitHub Issue with the story title and body (Context + ACs rendered as Markdown), writes the issue number back into the story frontmatter, and includes a `Story` footer with a link to the story file
-- [ ] Community-created issues have a `Story: —` footer added by an issue template; when a story file is linked via `issue: <N>`, the workflow updates the footer with the story link
+- [ ] A GitHub Actions workflow triggers on every push to `main`: any story file in `open/` or `ready/` without an `issue` field gets a GitHub Issue created (title + Context + ACs as Markdown body + structured footer with story link and checksum); the issue number and checksum are written back into the story frontmatter
+- [ ] A one-time backfill script creates issues for all existing stories in `open/` and `ready/` that have no `issue` field
+- [ ] On push to `main`, for stories that already have an `issue` field: recompute checksum; if it differs from the checksum in the issue footer → update issue body and footer checksum
+- [ ] On `issues: edited` event: extract checksum from issue footer; if it differs from the story frontmatter checksum → update story file content and frontmatter checksum, commit to `main` with message `sync: US-NNNN story updated from issue`
+- [ ] Checksum is computed over the story body (excluding frontmatter) so frontmatter-only changes (e.g. `issue`, `checksum` fields) do not trigger content sync
+- [ ] Community-created issues have a `Story: — / Checksum: —` footer added by issue template; when linked via `issue: <N>`, the workflow fills in the story link and checksum
 - [ ] When a story file is moved to `done/`, the linked issue is closed with reason `completed`
 - [ ] When a story file is moved to `archive/`, the linked issue is closed with label `won't fix`
-- [ ] When a PR is opened for a `story/US-NNNN-*` branch, the linked issue (looked up via `issue` field in story frontmatter on `main`) receives the label `in progress`
-- [ ] Stories without an `issue` field are silently skipped by all triggers
+- [ ] When a branch `story/US-NNNN-*` is created, the linked issue receives the label `in-progress`
+- [ ] When a PR is opened for a `story/US-NNNN-*` branch, the label `in-progress` is replaced with `in-review` on the linked issue
+- [ ] Stories in `done/` or `archive/` without an `issue` field are silently skipped
 - [ ] The triage flow is documented in CONTRIBUTING.md: how to link an existing community issue to a new story file
 - [ ] The `issue` field is added to the story file template
 
