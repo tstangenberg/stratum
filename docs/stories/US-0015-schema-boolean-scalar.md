@@ -16,10 +16,10 @@ status: in-review
 
 ## Acceptance Criteria
 
-- [ ] Schema with a `Boolean!` field is accepted
-- [ ] PostgreSQL column type is `BOOLEAN`
-- [ ] `true` and `false` can be written via mutation and read back correctly
-- [ ] String values (`"true"`) are rejected as invalid input
+- [x] Schema with a `Boolean!` field is accepted
+- [x] PostgreSQL column type is `BOOLEAN`
+- [x] `true` and `false` can be written via mutation and read back correctly
+- [x] String values (`"true"`) are rejected as invalid input
 
 ## E2E Tests
 
