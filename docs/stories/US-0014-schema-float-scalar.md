@@ -1,7 +1,7 @@
 ---
 id: US-014
 tags: [schema, scalar]
-status: in-review
+status: done
 ---
 
 # US-0014: Schema with a Float field
