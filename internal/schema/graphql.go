@@ -60,7 +60,8 @@ func BuildHandler(db *pgxpool.Pool, schemaName string, ps *ParsedSchema, scalars
 		inputFields := graphql.InputObjectConfigFieldMap{}
 		for _, f := range t.Fields {
 			if f.Name == "id" {
-				inputFields["id"] = &graphql.InputObjectFieldConfig{Type: graphql.ID}
+				// ID is optional on input — omitting it triggers auto-generation.
+				inputFields["id"] = &graphql.InputObjectFieldConfig{Type: scalars["ID"].GraphQLType()}
 				continue
 			}
 			ft, _ := scalarToGraphQL(f, scalars) // scalars already validated in output-fields loop above
@@ -236,6 +237,8 @@ func getRecord(ctx context.Context, db *pgxpool.Pool, tbl string, cols []string,
 }
 
 func createRecord(ctx context.Context, db *pgxpool.Pool, tbl string, fields []FieldDef, input map[string]any) (map[string]any, error) {
+	// graphql.ID coerces all inputs to string at the GraphQL layer, so a
+	// string type assertion is the only case we need to handle here.
 	id, ok := input["id"].(string)
 	if !ok || id == "" {
 		id = newID()
