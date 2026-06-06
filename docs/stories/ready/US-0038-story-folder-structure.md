@@ -1,7 +1,7 @@
 ---
 id: US-0038
 tags: [dev-tooling, workflow, docs]
-status: ready
+status: in-progress
 depends_on: [US-0026, US-0031]
 ---
 
@@ -36,16 +36,16 @@ A story moves from `open/` to `ready/` automatically: when a story is moved to `
 
 ## Acceptance Criteria
 
-- [ ] `docs/stories/open/`, `docs/stories/ready/`, `docs/stories/done/`, and `docs/stories/archive/` directories exist
-- [ ] All existing story files are moved to the appropriate folder: `status: done` → `done/`; `status: ready` with all deps done → `ready/`; `status: ready` with unmet deps or draft → `open/`
-- [ ] The `status` field in frontmatter is preserved unchanged in all story files
-- [ ] The GitHub Actions workflow from US-0026 (PR lifecycle → frontmatter status patch) is removed
-- [ ] When a story is moved to `done/`, a script scans all stories in `open/` and `git mv`s those with `status: ready` and fully satisfied `depends_on` to `ready/`
-- [ ] The script commits to `main` with message `bot: US-NNNN unblocked → ready/`
-- [ ] Stories in `open/` with no `depends_on` are not moved by the script (draft — manual decision)
-- [ ] The frontmatter-patching workflow from US-0031 is removed; this script replaces it
-- [ ] Archive is a manual operation — no CI trigger moves files to `archive/`
-- [ ] CONTRIBUTING.md documents the folder convention and status values
+- [x] `docs/stories/open/`, `docs/stories/ready/`, `docs/stories/done/`, and `docs/stories/archive/` directories exist
+- [x] All existing story files are moved to the appropriate folder: `status: done` → `done/`; `status: ready` with all deps done → `ready/`; `status: ready` with unmet deps or draft → `open/`
+- [x] The `status` field in frontmatter is preserved unchanged in all story files
+- [x] The GitHub Actions workflow from US-0026 (PR lifecycle → frontmatter status patch) is removed
+- [x] When a story is moved to `done/`, a script scans all stories in `open/` and `git mv`s those with `status: ready` and fully satisfied `depends_on` to `ready/`
+- [x] The script commits to `main` with message `bot: US-NNNN unblocked → ready/`
+- [x] Stories in `open/` with no `depends_on` are not moved by the script (draft — manual decision)
+- [x] The frontmatter-patching workflow from US-0031 is removed; this script replaces it
+- [x] Archive is a manual operation — no CI trigger moves files to `archive/`
+- [x] CONTRIBUTING.md documents the folder convention and status values
 
 ## E2E Tests
 
