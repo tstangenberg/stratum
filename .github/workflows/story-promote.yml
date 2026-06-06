@@ -1,0 +1,61 @@
+name: Promote unblocked stories
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/stories/done/**'
+
+jobs:
+  promote:
+    name: promote unblocked stories
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          token: ${{ secrets.BOT_TOKEN }}
+
+      - name: Promote unblocked stories from open/ to ready/
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          promoted=""
+
+          for candidate in docs/stories/open/*.md; do
+            [ -f "$candidate" ] || continue
+
+            # Only promote stories with status: ready
+            grep -q "^status: ready" "$candidate" || continue
+
+            # Skip stories with no depends_on — those are drafts (manual decision)
+            grep -q "^depends_on:" "$candidate" || continue
+
+            # Extract dependency list
+            DEPS=$(grep "^depends_on:" "$candidate" | sed 's/depends_on: \[//' | tr -d '[]' | tr ',' '\n' | tr -d ' ')
+
+            all_done=true
+            for dep in $DEPS; do
+              dep_file=$(find docs/stories/done -name "${dep}-*.md" | head -1)
+              if [ -z "$dep_file" ]; then
+                all_done=false
+                break
+              fi
+            done
+
+            if [ "$all_done" = "true" ]; then
+              STORY_ID=$(grep "^id:" "$candidate" | awk '{print $2}')
+              git mv "$candidate" docs/stories/ready/
+              promoted="${promoted} ${STORY_ID}"
+            fi
+          done
+
+          if [ -z "$promoted" ]; then
+            echo "No stories to promote."
+            exit 0
+          fi
+
+          git commit -m "bot:${promoted} unblocked → ready/"
+          git push origin main
