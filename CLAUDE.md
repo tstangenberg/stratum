@@ -7,7 +7,7 @@ Schema-first data middleware. A user defines a domain model in GraphQL SDL → S
 ## Documentation
 
 - `docs/decisions/` — Architecture Decision Records (ADRs); read the relevant ADR before changing a technology or pattern
-- `docs/stories/` — User stories with acceptance criteria and E2E test names; the active story defines what to build
+- `docs/stories/{open,ready,done,archive}/` — User stories with acceptance criteria and E2E test names; the active story defines what to build
 - `docs/superpowers/plans/` — Implementation plans for stories; check for a plan matching the active story before writing any code (gitignored, local only)
 
 ## Tech stack
@@ -16,7 +16,7 @@ Go 1.26 · PostgreSQL · `vektah/gqlparser` (SDL parsing) · `graphql-go/graphql
 
 ## Stories and branches
 
-- Stories live in `docs/stories/US-NNNN-<slug>.md`
+- Stories live in `docs/stories/{open,ready,done,archive}/US-NNNN-<slug>.md`
 - One branch per story: `story/US-NNNN-<slug>`
 - Always work in a git worktree for the story branch — never edit files in the main checkout
 - Never commit directly to `main` — always a PR

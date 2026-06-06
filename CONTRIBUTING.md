@@ -10,18 +10,38 @@ Branches implementing a story must follow: `story/US-NNNN-<slug>`
 
 Example: `story/US-0033-ci-build-and-test`
 
-The CI bot updates the story status automatically from the PR lifecycle:
+## Story folder convention
 
-| PR event | Story status |
+Story files live in `docs/stories/` under one of four subfolders:
+
+| Folder | Meaning |
 |---|---|
-| Draft PR opened | `in-progress` |
-| PR marked ready for review | `in-review` |
-| PR merged | `done` |
-| PR closed without merge | `ready` |
+| `open/` | Draft, or `status: ready` but waiting on unmet dependencies |
+| `ready/` | `status: ready` and all dependencies met — actionable now |
+| `done/` | Merged and shipped |
+| `archive/` | Rejected, won't-do, superseded, or indefinitely deferred |
+
+`in-progress` and `in-review` states are **not** tracked in the filesystem — they are visible from the open PR itself.
+
+### Status values (frontmatter)
+
+The `status` field in frontmatter remains the machine-readable source of truth:
+
+`draft` → `ready` → `in-progress` → `in-review` → `done`
+
+### Moving stories
+
+Status transitions are **manual**: a maintainer moves the file to the appropriate folder and updates the frontmatter field.
+
+When a story is moved to `done/`, a CI workflow (`story-promote.yml`) automatically scans `open/` for stories with `status: ready` whose `depends_on` list is fully satisfied (all referenced stories are in `done/`). Those stories are `git mv`'d to `ready/` and committed to `main`.
+
+Stories in `open/` with **no** `depends_on` field are never promoted automatically — they require a manual decision.
+
+Archive is always a manual operation — no CI trigger moves files to `archive/`.
 
 ## Bot token (BOT_TOKEN)
 
-The story-status workflow commits directly to `main` (bypassing the PR requirement) using a fine-grained personal access token stored as the `BOT_TOKEN` repository secret. The token is owned by the repository owner, who is exempt from branch protection (`enforce_admins: false`).
+The story-promote workflow pushes directly to `main` using a fine-grained personal access token stored as the `BOT_TOKEN` repository secret. The token is owned by the repository owner, who is exempt from branch protection (`enforce_admins: false`).
 
 **To rotate or set up the token:**
 
