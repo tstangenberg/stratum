@@ -1,7 +1,7 @@
 ---
 id: US-0038
 tags: [dev-tooling, workflow, docs]
-status: in-progress
+status: done
 depends_on: [US-0026, US-0031]
 ---
 

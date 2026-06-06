@@ -28,14 +28,15 @@ Go 1.26 · PostgreSQL · `vektah/gqlparser` (SDL parsing) · `graphql-go/graphql
 
 - Set status to `in-progress` when starting work on the branch
 - Set status to `in-review` when opening a PR
-- Set status to `done` when the PR is merged
+- Move the story file from `ready/` to `done/` and set status to `done` as the last commit on the branch before merge
 
 ## Before opening a PR
 
 1. Verify every acceptance criterion in the story file is met
 2. Check off each criterion (`- [ ]` → `- [x]`) in the story file and commit the update
-3. Run the full test suite: `go test ./...`
-4. Ensure 100% coverage for all internal packages: `go test ./internal/... -cover`
+3. Move the story file: `git mv docs/stories/ready/US-NNNN-*.md docs/stories/done/` and set `status: done` in the frontmatter
+4. Run the full test suite: `go test ./...`
+5. Ensure 100% coverage for all internal packages: `go test ./internal/... -cover`
 
 ## Test strategy — Double Loop TDD
 
