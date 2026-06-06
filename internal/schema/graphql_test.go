@@ -24,6 +24,7 @@ import (
 	"testing"
 
 	"github.com/tstangenberg/stratum/internal/plugin/scalar"
+	idscalar "github.com/tstangenberg/stratum/internal/plugin/scalar/id"
 	stringscalar "github.com/tstangenberg/stratum/internal/plugin/scalar/string"
 	"github.com/tstangenberg/stratum/internal/schema"
 )
@@ -31,7 +32,7 @@ import (
 func stringScalars() map[string]scalar.Plugin {
 	return map[string]scalar.Plugin{
 		"String": stringscalar.Plugin{},
-		"ID":     stringscalar.Plugin{},
+		"ID":     idscalar.Plugin{},
 	}
 }
 

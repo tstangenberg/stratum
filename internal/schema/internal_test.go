@@ -25,6 +25,7 @@ import (
 
 	"github.com/graphql-go/graphql"
 	"github.com/tstangenberg/stratum/internal/plugin/scalar"
+	idscalar "github.com/tstangenberg/stratum/internal/plugin/scalar/id"
 	stringscalar "github.com/tstangenberg/stratum/internal/plugin/scalar/string"
 )
 
@@ -70,7 +71,7 @@ func TestNewID(t *testing.T) {
 
 func TestScalarToGraphQL_IDField(t *testing.T) {
 	f := FieldDef{Name: "id", Type: "ID", NonNull: true}
-	out, err := scalarToGraphQL(f, nil)
+	out, err := scalarToGraphQL(f, map[string]scalar.Plugin{"ID": idscalar.Plugin{}})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -105,7 +106,7 @@ func TestScalarToGraphQL_UnknownScalar(t *testing.T) {
 
 func TestScalarToGraphQL_IDType(t *testing.T) {
 	f := FieldDef{Name: "ref", Type: "ID", NonNull: false}
-	out, err := scalarToGraphQL(f, nil)
+	out, err := scalarToGraphQL(f, map[string]scalar.Plugin{"ID": idscalar.Plugin{}})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

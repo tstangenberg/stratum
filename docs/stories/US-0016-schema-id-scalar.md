@@ -16,11 +16,11 @@ status: in-review
 
 ## Acceptance Criteria
 
-- [ ] Schema with an `ID!` field is accepted
-- [ ] PostgreSQL column type is `TEXT` and functions as the primary key
-- [ ] Client-supplied ID is stored and returned as-is
-- [ ] Duplicate ID on create returns a GraphQL error
-- [ ] If `id` is omitted from the mutation input, Stratum generates a unique ID
+- [x] Schema with an `ID!` field is accepted
+- [x] PostgreSQL column type is `TEXT` and functions as the primary key
+- [x] Client-supplied ID is stored and returned as-is
+- [x] Duplicate ID on create returns a GraphQL error
+- [x] If `id` is omitted from the mutation input, Stratum generates a unique ID
 
 ## E2E Tests
 

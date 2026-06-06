@@ -60,6 +60,8 @@ func BuildHandler(db *pgxpool.Pool, schemaName string, ps *ParsedSchema, scalars
 		inputFields := graphql.InputObjectConfigFieldMap{}
 		for _, f := range t.Fields {
 			if f.Name == "id" {
+				// ID is optional on input — omitting it triggers auto-generation.
+				inputFields["id"] = &graphql.InputObjectFieldConfig{Type: scalars["ID"].GraphQLType()}
 				continue
 			}
 			ft, _ := scalarToGraphQL(f, scalars) // scalars already validated in output-fields loop above
@@ -156,19 +158,13 @@ func (h *gqlHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(result)
 }
 
-// scalarToGraphQL maps a FieldDef to its graphql-go output type.
-// "id" fields always map to graphql.ID regardless of the scalar registry.
+// scalarToGraphQL maps a FieldDef to its graphql-go output type via the scalar plugin registry.
 func scalarToGraphQL(f FieldDef, scalars map[string]scalar.Plugin) (graphql.Output, error) {
-	var base graphql.Output
-	if f.Name == "id" || f.Type == "ID" {
-		base = graphql.ID
-	} else {
-		p, ok := scalars[f.Type]
-		if !ok {
-			return nil, fmt.Errorf("graphql: unknown scalar %q for field %q", f.Type, f.Name)
-		}
-		base = p.GraphQLType()
+	p, ok := scalars[f.Type]
+	if !ok {
+		return nil, fmt.Errorf("graphql: unknown scalar %q for field %q", f.Type, f.Name)
 	}
+	var base graphql.Output = p.GraphQLType()
 	if f.NonNull {
 		return graphql.NewNonNull(base), nil
 	}
@@ -241,7 +237,12 @@ func getRecord(ctx context.Context, db *pgxpool.Pool, tbl string, cols []string,
 }
 
 func createRecord(ctx context.Context, db *pgxpool.Pool, tbl string, fields []FieldDef, input map[string]any) (map[string]any, error) {
-	id := newID()
+	// graphql.ID coerces all inputs to string at the GraphQL layer, so a
+	// string type assertion is the only case we need to handle here.
+	id, ok := input["id"].(string)
+	if !ok || id == "" {
+		id = newID()
+	}
 	cols := []string{"id"}
 	args := []any{id}
 	placeholders := []string{"$1"}
