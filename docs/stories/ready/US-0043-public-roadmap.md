@@ -18,7 +18,6 @@ A GitHub Projects board made public at OSS launch. Columns map to story status. 
 
 - [ ] GitHub Projects board created with columns: Backlog → Ready → In Progress → Done
 - [ ] Board is set to public visibility
-- [ ] Stories US-0040 through US-0046 are added to the board
 - [ ] All existing stories in `docs/stories/ready/` are added to the board
 
 ## E2E Tests

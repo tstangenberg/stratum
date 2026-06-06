@@ -21,7 +21,8 @@ Added at OSS launch. Sets expectations before the community forms. Depends on US
 - [ ] Covers: dev environment setup, how to run tests, Double Loop TDD workflow, how to submit a PR
 - [ ] Covers: plugin interface contracts and where to find them
 - [ ] Links to GitHub Discussions for questions
-- [ ] Links to `CODE_OF_CONDUCT.md`
+- [ ] Includes a placeholder line "See CODE_OF_CONDUCT.md" (link activated by US-0042)
+- [ ] Includes a placeholder line "See SECURITY.md for reporting vulnerabilities" (link activated by US-0049)
 
 ## E2E Tests
 

@@ -29,4 +29,4 @@ GitHub Discussions is enabled on the Stratum repo at OSS launch. It is the prima
 
 ## E2E Tests
 
-Manual verification: confirm in GitHub repo Settings → Features → Discussions, and check each category exists under the Discussions tab.
+Manual verification: confirm in GitHub repo Settings → General (Features section) → Discussions is enabled, and check each category exists under the Discussions tab.
