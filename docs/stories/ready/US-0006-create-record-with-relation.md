@@ -1,7 +1,7 @@
 ---
 id: US-006
 tags: [data, mutation, relations]
-status: open
+status: ready
 ---
 
 # US-0006: Create a record with a relation

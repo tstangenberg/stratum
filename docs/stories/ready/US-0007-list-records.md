@@ -1,7 +1,7 @@
 ---
 id: US-007
 tags: [data, query, pagination]
-status: open
+status: ready
 ---
 
 # US-0007: List all records

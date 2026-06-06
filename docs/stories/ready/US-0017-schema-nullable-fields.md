@@ -1,7 +1,7 @@
 ---
 id: US-017
 tags: [schema]
-status: open
+status: ready
 ---
 
 # US-0017: Schema with nullable fields

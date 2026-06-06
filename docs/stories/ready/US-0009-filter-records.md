@@ -1,7 +1,7 @@
 ---
 id: US-009
 tags: [data, query, filter]
-status: open
+status: ready
 ---
 
 # US-0009: Filter records by field value

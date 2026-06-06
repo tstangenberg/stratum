@@ -1,7 +1,7 @@
 ---
 id: US-010
 tags: [data, query, relations]
-status: open
+status: ready
 ---
 
 # US-0010: Traverse a 1:N relation

@@ -1,7 +1,7 @@
 ---
 id: US-019
 tags: [schema]
-status: open
+status: ready
 ---
 
 # US-0019: Schema re-upload — additive update

@@ -1,7 +1,7 @@
 ---
 id: US-020
 tags: [schema]
-status: open
+status: ready
 ---
 
 # US-0020: Schema with multiple independent types

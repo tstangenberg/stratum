@@ -1,7 +1,7 @@
 ---
 id: US-008
 tags: [data, query]
-status: open
+status: ready
 ---
 
 # US-0008: Get a single record by ID

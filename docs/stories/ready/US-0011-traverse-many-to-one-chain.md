@@ -1,7 +1,7 @@
 ---
 id: US-011
 tags: [data, query, relations]
-status: open
+status: ready
 ---
 
 # US-0011: Traverse a N:1 relation chain

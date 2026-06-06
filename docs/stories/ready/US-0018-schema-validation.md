@@ -1,7 +1,7 @@
 ---
 id: US-018
 tags: [schema]
-status: open
+status: ready
 ---
 
 # US-0018: Schema validation — invalid SDL rejected
