@@ -31,6 +31,7 @@ import (
 	"github.com/tstangenberg/stratum/internal/plugin"
 	"github.com/tstangenberg/stratum/internal/plugin/scalar"
 	booleanscalar "github.com/tstangenberg/stratum/internal/plugin/scalar/boolean"
+	intscalar "github.com/tstangenberg/stratum/internal/plugin/scalar/int"
 	stringscalar "github.com/tstangenberg/stratum/internal/plugin/scalar/string"
 	"github.com/tstangenberg/stratum/internal/schema"
 )
@@ -53,6 +54,7 @@ func NewStratumServer(plugins ...plugin.HealthPlugin) *StratumServer {
 		scalars: map[string]scalar.Plugin{
 			"String":  stringscalar.Plugin{},
 			"ID":      stringscalar.Plugin{},
+			"Int":     intscalar.Plugin{},
 			"Boolean": booleanscalar.Plugin{},
 		},
 	}

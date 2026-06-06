@@ -337,6 +337,43 @@ func TestSchemaBooleanScalar(t *testing.T) {
 	if createFalseResult.Data.Record.Create.InAenderung {
 		t.Errorf("create-false: inAenderung = true, want false")
 	}
+	falseID := createFalseResult.Data.Record.Create.ID
+	if falseID == "" {
+		t.Fatal("create-false: expected non-empty id")
+	}
+
+	// Read back false record to confirm persistence
+	gqlGetFalse := fmt.Sprintf(`{"query":"{ record { get(id: \"%s\") { id inAenderung } } }"}`, falseID)
+	req = httptest.NewRequest(http.MethodPost, "/graphql/records",
+		strings.NewReader(gqlGetFalse))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("get-false: expected 200, got %d — body: %s", w.Code, w.Body.String())
+	}
+
+	var getFalseResult struct {
+		Data struct {
+			Record struct {
+				Get struct {
+					ID          string `json:"id"`
+					InAenderung bool   `json:"inAenderung"`
+				} `json:"get"`
+			} `json:"record"`
+		} `json:"data"`
+		Errors []struct{ Message string } `json:"errors"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&getFalseResult); err != nil {
+		t.Fatalf("get-false: decode: %v", err)
+	}
+	if len(getFalseResult.Errors) > 0 {
+		t.Fatalf("get-false: GraphQL errors: %v", getFalseResult.Errors)
+	}
+	if getFalseResult.Data.Record.Get.InAenderung {
+		t.Errorf("get-false: inAenderung = true, want false")
+	}
 
 	// ── 5. String "true" rejected as invalid Boolean input ──────────────────
 	gqlStringBool := `{"query":"mutation { record { create(input: {name: \"Bad\", inAenderung: \"true\"}) { id } } }"}`
@@ -359,5 +396,160 @@ func TestSchemaBooleanScalar(t *testing.T) {
 	}
 	if len(stringBoolResult.Errors) == 0 {
 		t.Fatal("string-bool: expected GraphQL errors for string input, got none")
+	}
+}
+
+func TestSchemaIntScalar(t *testing.T) {
+	ctx := context.Background()
+
+	pgc, err := postgres.Run(ctx, "postgres:16-alpine",
+		postgres.WithDatabase("stratum"),
+		postgres.WithUsername("stratum"),
+		postgres.WithPassword("stratum"),
+		testcontainers.WithWaitStrategy(
+			wait.ForLog("database system is ready to accept connections").
+				WithOccurrence(2).
+				WithStartupTimeout(30*time.Second),
+		),
+	)
+	if err != nil {
+		t.Fatalf("start postgres: %v", err)
+	}
+	t.Cleanup(func() { _ = pgc.Terminate(ctx) })
+
+	dsn, err := pgc.ConnectionString(ctx, "sslmode=disable")
+	if err != nil {
+		t.Fatalf("connection string: %v", err)
+	}
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		t.Fatalf("connect pool: %v", err)
+	}
+	t.Cleanup(pool.Close)
+
+	handler := server.Handler(server.NewStratumServer().WithDB(pool))
+
+	// ── 1. Upload schema with Int! field ────────────────────────────────────
+	sdl := `type Product { id: ID! name: String! quantity: Int! }`
+	body, _ := json.Marshal(api.SchemaUploadRequest{Sdl: sdl})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/schemas/products",
+		bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("upload: expected 200, got %d — body: %s", w.Code, w.Body.String())
+	}
+
+	var uploadResp api.SchemaUploadResponse
+	if err := json.NewDecoder(w.Body).Decode(&uploadResp); err != nil {
+		t.Fatalf("upload: decode response: %v", err)
+	}
+	if uploadResp.Status != api.Applied {
+		t.Errorf("upload: status = %q, want %q", uploadResp.Status, api.Applied)
+	}
+
+	// ── 2. Verify PostgreSQL column type is INTEGER ─────────────────────────
+	var colType string
+	err = pool.QueryRow(ctx,
+		`SELECT data_type FROM information_schema.columns
+		 WHERE table_name = 'products_product' AND column_name = 'quantity'`).Scan(&colType)
+	if err != nil {
+		t.Fatalf("column type query: %v", err)
+	}
+	if colType != "integer" {
+		t.Errorf("column type = %q, want %q", colType, "integer")
+	}
+
+	// ── 3. Create a record with an integer value ────────────────────────────
+	gqlCreate := `{"query":"mutation { product { create(input: {name: \"Widget\", quantity: 42}) { id name quantity } } }"}`
+	req = httptest.NewRequest(http.MethodPost, "/graphql/products",
+		strings.NewReader(gqlCreate))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("create: expected 200, got %d — body: %s", w.Code, w.Body.String())
+	}
+
+	var createResult struct {
+		Data struct {
+			Product struct {
+				Create struct {
+					ID       string `json:"id"`
+					Name     string `json:"name"`
+					Quantity int    `json:"quantity"`
+				} `json:"create"`
+			} `json:"product"`
+		} `json:"data"`
+		Errors []struct{ Message string } `json:"errors"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&createResult); err != nil {
+		t.Fatalf("create: decode: %v", err)
+	}
+	if len(createResult.Errors) > 0 {
+		t.Fatalf("create: GraphQL errors: %v", createResult.Errors)
+	}
+	createdID := createResult.Data.Product.Create.ID
+	if createdID == "" {
+		t.Fatal("create: expected non-empty id")
+	}
+	if createResult.Data.Product.Create.Quantity != 42 {
+		t.Errorf("create: quantity = %d, want 42", createResult.Data.Product.Create.Quantity)
+	}
+
+	// ── 4. Read back via GraphQL get ────────────────────────────────────────
+	gqlGet := fmt.Sprintf(`{"query":"{ product { get(id: \"%s\") { id name quantity } } }"}`, createdID)
+	req = httptest.NewRequest(http.MethodPost, "/graphql/products",
+		strings.NewReader(gqlGet))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("get: expected 200, got %d — body: %s", w.Code, w.Body.String())
+	}
+
+	var getResult struct {
+		Data struct {
+			Product struct {
+				Get struct {
+					ID       string `json:"id"`
+					Name     string `json:"name"`
+					Quantity int    `json:"quantity"`
+				} `json:"get"`
+			} `json:"product"`
+		} `json:"data"`
+		Errors []struct{ Message string } `json:"errors"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&getResult); err != nil {
+		t.Fatalf("get: decode: %v", err)
+	}
+	if len(getResult.Errors) > 0 {
+		t.Fatalf("get: GraphQL errors: %v", getResult.Errors)
+	}
+	if getResult.Data.Product.Get.Quantity != 42 {
+		t.Errorf("get: quantity = %d, want 42", getResult.Data.Product.Get.Quantity)
+	}
+
+	// ── 5. Out-of-range value returns a GraphQL error ───────────────────────
+	gqlOverflow := `{"query":"mutation { product { create(input: {name: \"Overflow\", quantity: 2147483648}) { id } } }"}`
+	req = httptest.NewRequest(http.MethodPost, "/graphql/products",
+		strings.NewReader(gqlOverflow))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	var overflowResult struct {
+		Data   any                        `json:"data"`
+		Errors []struct{ Message string } `json:"errors"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&overflowResult); err != nil {
+		t.Fatalf("overflow: decode: %v", err)
+	}
+	if len(overflowResult.Errors) == 0 {
+		t.Error("overflow: expected GraphQL error for out-of-range Int, got none")
 	}
 }
