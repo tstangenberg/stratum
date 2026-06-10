@@ -127,6 +127,130 @@ func (r *stubRows) Err() error          { return nil }
 func (r *stubRows) Next() bool          { r.called++; return r.called <= r.nextN }
 func (r *stubRows) Scan(_ ...any) error { return r.scanErr }
 
+func TestCamelToSnake(t *testing.T) {
+	tests := []struct {
+		input, want string
+	}{
+		{"kanton", "kanton"},
+		{"billingAddress", "billing_address"},
+		{"shippingAddress", "shipping_address"},
+		{"ortschaft", "ortschaft"},
+		{"myFieldName", "my_field_name"},
+		{"id", "id"},
+		{"PLZ", "plz"},
+		{"XMLParser", "xml_parser"},
+	}
+	for _, tt := range tests {
+		got := camelToSnake(tt.input)
+		if got != tt.want {
+			t.Errorf("camelToSnake(%q) = %q, want %q", tt.input, got, tt.want)
+		}
+	}
+}
+
+func TestFKColumnName(t *testing.T) {
+	tests := []struct {
+		fieldName, want string
+	}{
+		{"kanton", "kanton_id"},
+		{"billingAddress", "billing_address_id"},
+		{"ortschaft", "ortschaft_id"},
+	}
+	for _, tt := range tests {
+		got := fkColumnName(tt.fieldName)
+		if got != tt.want {
+			t.Errorf("fkColumnName(%q) = %q, want %q", tt.fieldName, got, tt.want)
+		}
+	}
+}
+
+func TestFKInputName(t *testing.T) {
+	tests := []struct {
+		fieldName, want string
+	}{
+		{"kanton", "kantonId"},
+		{"billingAddress", "billingAddressId"},
+		{"ortschaft", "ortschaftId"},
+	}
+	for _, tt := range tests {
+		got := fkInputName(tt.fieldName)
+		if got != tt.want {
+			t.Errorf("fkInputName(%q) = %q, want %q", tt.fieldName, got, tt.want)
+		}
+	}
+}
+
+func TestColumnNames(t *testing.T) {
+	td := TypeDef{
+		Name: "Ortschaft",
+		Fields: []FieldDef{
+			{Name: "id", Type: "ID"},
+			{Name: "name", Type: "String"},
+			{Name: "kanton", Type: "Kanton", IsRelation: true},
+		},
+	}
+	got := columnNames(td)
+	want := []string{"id", "name", "kanton_id"}
+	if len(got) != len(want) {
+		t.Fatalf("columnNames() len = %d, want %d", len(got), len(want))
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("columnNames()[%d] = %q, want %q", i, got[i], want[i])
+		}
+	}
+}
+
+func TestTopoSort_CircularReference(t *testing.T) {
+	byName := map[string]TypeDef{
+		"A": {Name: "A", Fields: []FieldDef{{Name: "b", Type: "B", IsRelation: true}}},
+		"B": {Name: "B", Fields: []FieldDef{{Name: "a", Type: "A", IsRelation: true}}},
+	}
+	_, err := topoSort(byName)
+	if err == nil {
+		t.Fatal("expected error for circular reference")
+	}
+	if !strings.Contains(err.Error(), "circular") {
+		t.Errorf("error = %q, want it to mention circular", err)
+	}
+}
+
+func TestResolveRelation_NonMapSource(t *testing.T) {
+	resolver := resolveRelation(nil, "tbl", []string{"id"}, "fk_id")
+	p := graphql.ResolveParams{Source: "not-a-map"}
+	got, err := resolver(p)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != nil {
+		t.Errorf("expected nil, got %v", got)
+	}
+}
+
+func TestResolveRelation_MissingFK(t *testing.T) {
+	resolver := resolveRelation(nil, "tbl", []string{"id"}, "fk_id")
+	p := graphql.ResolveParams{Source: map[string]any{"id": "x"}}
+	got, err := resolver(p)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != nil {
+		t.Errorf("expected nil, got %v", got)
+	}
+}
+
+func TestResolveRelation_EmptyFK(t *testing.T) {
+	resolver := resolveRelation(nil, "tbl", []string{"id"}, "fk_id")
+	p := graphql.ResolveParams{Source: map[string]any{"fk_id": ""}}
+	got, err := resolver(p)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != nil {
+		t.Errorf("expected nil, got %v", got)
+	}
+}
+
 func TestScanList_ScanError(t *testing.T) {
 	scanErr := errors.New("broken scan")
 	rows := &stubRows{nextN: 1, scanErr: scanErr}
