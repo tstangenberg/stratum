@@ -19,6 +19,7 @@ package schema
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/vektah/gqlparser/v2"
@@ -35,6 +36,9 @@ func isBuiltinType(name string) bool {
 }
 
 // ParseSDL parses a GraphQL SDL string and extracts user-defined object types.
+// Fields whose type refers to another object type in the same schema are marked
+// as relations (IsRelation = true). The returned types are topologically sorted
+// so that referenced types appear before the types that reference them.
 // Returns an error if the SDL is invalid or defines no object types.
 func ParseSDL(sdl string) (*ParsedSchema, error) {
 	if strings.TrimSpace(sdl) == "" {
@@ -46,31 +50,93 @@ func ParseSDL(sdl string) (*ParsedSchema, error) {
 		return nil, fmt.Errorf("schema: parse sdl: %w", err)
 	}
 
-	var types []TypeDef
+	userTypes := make(map[string]bool)
 	for name, def := range gqlSchema.Types {
-		if def.Kind != ast.Object {
+		if def.Kind != ast.Object || strings.HasPrefix(name, "__") || isBuiltinType(name) {
 			continue
 		}
-		if strings.HasPrefix(name, "__") {
-			continue
-		}
-		if isBuiltinType(name) {
-			continue
-		}
+		userTypes[name] = true
+	}
 
+	byName := make(map[string]TypeDef, len(userTypes))
+	for name, def := range gqlSchema.Types {
+		if !userTypes[name] {
+			continue
+		}
 		td := TypeDef{Name: name}
 		for _, f := range def.Fields {
-			td.Fields = append(td.Fields, FieldDef{
+			fd := FieldDef{
 				Name:    f.Name,
 				Type:    f.Type.NamedType,
 				NonNull: f.Type.NonNull,
-			})
+			}
+			if userTypes[f.Type.NamedType] {
+				fd.IsRelation = true
+			}
+			td.Fields = append(td.Fields, fd)
 		}
-		types = append(types, td)
+		byName[name] = td
 	}
 
-	if len(types) == 0 {
+	if len(byName) == 0 {
 		return nil, fmt.Errorf("schema: sdl defines no object types")
 	}
-	return &ParsedSchema{Types: types}, nil
+
+	sorted, err := topoSort(byName)
+	if err != nil {
+		return nil, err
+	}
+	return &ParsedSchema{Types: sorted}, nil
+}
+
+// topoSort returns types ordered so that referenced types come before the
+// types that reference them. Returns an error on circular references.
+func topoSort(byName map[string]TypeDef) ([]TypeDef, error) {
+	const (
+		unvisited = 0
+		visiting  = 1
+		visited   = 2
+	)
+	state := make(map[string]int, len(byName))
+	var order []TypeDef
+
+	var visit func(name string) error
+	visit = func(name string) error {
+		switch state[name] {
+		case visited:
+			return nil
+		case visiting:
+			return fmt.Errorf("schema: circular relation involving %q", name)
+		}
+		state[name] = visiting
+		td := byName[name]
+		for _, f := range td.Fields {
+			if f.IsRelation {
+				if err := visit(f.Type); err != nil {
+					return err
+				}
+			}
+		}
+		state[name] = visited
+		order = append(order, td)
+		return nil
+	}
+
+	names := sortedKeys(byName)
+	for _, name := range names {
+		if err := visit(name); err != nil {
+			return nil, err
+		}
+	}
+	return order, nil
+}
+
+// sortedKeys returns the keys of a map sorted lexicographically for deterministic output.
+func sortedKeys(m map[string]TypeDef) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
 }
