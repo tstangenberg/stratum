@@ -1,7 +1,7 @@
 ---
 id: US-006
 tags: [data, mutation, relations]
-status: in-progress
+status: in-review
 ---
 
 # US-0006: Create a record with a relation
@@ -16,12 +16,12 @@ N:1 relations are expressed in the input as a foreign key ID field (e.g. `kanton
 
 ## Acceptance Criteria
 
-- [ ] `create` input accepts a relation field as an ID (e.g. `kantonId: "..."`)
-- [ ] Stratum stores the FK correctly in the database (`kanton_id` column)
-- [ ] The created record's relation is traversable in subsequent queries
-- [ ] Creating a record with a non-existent relation ID returns a GraphQL error
-- [ ] Creating `Ortschaft` with a valid `kantonId` persists correctly
-- [ ] Creating `PLZ` with a valid `ortschaftId` persists correctly
+- [x] `create` input accepts a relation field as an ID (e.g. `kantonId: "..."`)
+- [x] Stratum stores the FK correctly in the database (`kanton_id` column)
+- [x] The created record's relation is traversable in subsequent queries
+- [x] Creating a record with a non-existent relation ID returns a GraphQL error
+- [x] Creating `Ortschaft` with a valid `kantonId` persists correctly
+- [x] Creating `PLZ` with a valid `ortschaftId` persists correctly
 
 ## E2E Tests
 
