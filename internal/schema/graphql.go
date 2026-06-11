@@ -219,14 +219,6 @@ func scalarToGraphQL(f FieldDef, scalars map[string]scalar.Plugin) (graphql.Outp
 	return base, nil
 }
 
-func fieldNames(t TypeDef) []string {
-	names := make([]string, len(t.Fields))
-	for i, f := range t.Fields {
-		names[i] = f.Name
-	}
-	return names
-}
-
 // columnNames returns the actual PostgreSQL column names for a type's fields.
 // Relation fields are mapped to their FK column name (e.g. kanton → kanton_id).
 func columnNames(t TypeDef) []string {

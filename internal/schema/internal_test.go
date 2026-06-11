@@ -45,20 +45,6 @@ func TestTableName(t *testing.T) {
 	}
 }
 
-func TestFieldNames(t *testing.T) {
-	td := TypeDef{
-		Name: "Location",
-		Fields: []FieldDef{
-			{Name: "id"},
-			{Name: "name"},
-		},
-	}
-	got := fieldNames(td)
-	if len(got) != 2 || got[0] != "id" || got[1] != "name" {
-		t.Errorf("fieldNames() = %v, want [id name]", got)
-	}
-}
-
 func TestNewID(t *testing.T) {
 	uuidRe := regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
 	for range 10 {
@@ -139,6 +125,7 @@ func TestCamelToSnake(t *testing.T) {
 		{"id", "id"},
 		{"PLZ", "plz"},
 		{"XMLParser", "xml_parser"},
+		{"ABCDef", "abc_def"},
 	}
 	for _, tt := range tests {
 		got := camelToSnake(tt.input)
