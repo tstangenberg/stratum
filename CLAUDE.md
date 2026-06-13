@@ -24,11 +24,10 @@ Go 1.26 · PostgreSQL · `vektah/gqlparser` (SDL parsing) · `graphql-go/graphql
 
 ## Story lifecycle
 
-`draft` → `ready` → `in-progress` → `in-review` → `done`
+`draft` → `ready` → `in-progress` → `done`
 
 - Set status to `in-progress` when starting work on the branch
-- Set status to `in-review` when opening a PR
-- Move the story file from `ready/` to `done/` and set status to `done` as the last commit on the branch before merge
+- Move the story file to `done/` and set status to `done` when opening the PR (see "Before opening a PR" below)
 
 ## Before opening a PR
 
