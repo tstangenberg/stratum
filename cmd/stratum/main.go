@@ -22,6 +22,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -49,12 +50,23 @@ func main() {
 	}
 }
 
+func resolveMaxListLimit() int {
+	if s := os.Getenv("STRATUM_SERVER_LIST_MAX_LIMIT"); s != "" {
+		n, err := strconv.Atoi(s)
+		if err != nil {
+			log.Fatalf("STRATUM_SERVER_LIST_MAX_LIMIT: %v", err)
+		}
+		return n
+	}
+	return 0
+}
+
 func run(addr string) error {
 	pool, plugins := defaultPlugins()
 	if pool != nil {
 		defer pool.Close()
 	}
-	srv := server.NewStratumServer(plugins...)
+	srv := server.NewStratumServer(plugins...).WithMaxListLimit(resolveMaxListLimit())
 	if pool != nil {
 		srv = srv.WithDB(pool)
 	}

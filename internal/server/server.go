@@ -46,6 +46,7 @@ type StratumServer struct {
 	db            *pgxpool.Pool
 	schemas       *schema.Store
 	scalars       map[string]scalar.Plugin
+	maxListLimit  int
 }
 
 // NewStratumServer creates a new StratumServer with the given health plugins.
@@ -66,6 +67,12 @@ func NewStratumServer(plugins ...plugin.HealthPlugin) *StratumServer {
 // WithDB sets the PostgreSQL connection pool and returns the server for chaining.
 func (s *StratumServer) WithDB(db *pgxpool.Pool) *StratumServer {
 	s.db = db
+	return s
+}
+
+// WithMaxListLimit sets the hard maximum for list pagination and returns the server for chaining.
+func (s *StratumServer) WithMaxListLimit(n int) *StratumServer {
+	s.maxListLimit = n
 	return s
 }
 
@@ -173,7 +180,7 @@ func (s *StratumServer) UpsertSchema(ctx context.Context, req api.UpsertSchemaRe
 		}
 	}
 
-	h, err := schema.BuildHandler(s.db, name, ps, s.scalars)
+	h, err := schema.BuildHandler(s.db, name, ps, s.scalars, s.maxListLimit)
 	if err != nil {
 		return nil, fmt.Errorf("upsert schema %q: build handler: %w", name, err)
 	}

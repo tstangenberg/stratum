@@ -1,7 +1,7 @@
 ---
 id: US-007
 tags: [data, query, pagination]
-status: ready
+status: done
 ---
 
 # US-0007: List all records
@@ -16,13 +16,13 @@ The `list` query is generated for every type. `limit` is provided by the core (d
 
 ## Acceptance Criteria
 
-- [ ] `query { <type> { list { ... } } }` returns all records up to the default limit (100)
-- [ ] `list(limit: N)` returns at most N records
-- [ ] `list(limit: N, offset: M)` skips the first M records
-- [ ] `limit` exceeding the hard maximum returns a GraphQL error
-- [ ] The hard maximum is read from `STRATUM_SERVER_LIST_MAX_LIMIT` at startup (default: 1000)
-- [ ] Empty table returns an empty array, not an error
-- [ ] Returns records in a stable order (insertion order by default)
+- [x] `query { <type> { list { ... } } }` returns all records up to the default limit (100)
+- [x] `list(limit: N)` returns at most N records
+- [x] `list(limit: N, offset: M)` skips the first M records
+- [x] `limit` exceeding the hard maximum returns a GraphQL error
+- [x] The hard maximum is read from `STRATUM_SERVER_LIST_MAX_LIMIT` at startup (default: 1000)
+- [x] Empty table returns an empty array, not an error
+- [x] Returns records in a stable order (insertion order by default)
 
 ## E2E Tests
 

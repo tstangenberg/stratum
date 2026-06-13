@@ -33,7 +33,15 @@ import (
 // BuildHandler creates an HTTP handler that serves GraphQL for the given schema.
 // It builds a dynamic graphql-go schema with Query (list, get) and Mutation (create) per type.
 // Relation fields are resolved by loading the referenced record from the DB.
-func BuildHandler(db *pgxpool.Pool, schemaName string, ps *ParsedSchema, scalars map[string]scalar.Plugin) (http.Handler, error) {
+// maxLimit sets the hard maximum for list pagination (0 means default 1000).
+func BuildHandler(db *pgxpool.Pool, schemaName string, ps *ParsedSchema, scalars map[string]scalar.Plugin, maxLimit int) (http.Handler, error) {
+	if maxLimit <= 0 {
+		maxLimit = 1000
+	}
+	intType := graphql.Int
+	if s, ok := scalars["Int"]; ok {
+		intType = s.GraphQLType()
+	}
 	typeIndex := make(map[string]TypeDef, len(ps.Types))
 	for _, t := range ps.Types {
 		typeIndex[t.Name] = t
@@ -105,13 +113,38 @@ func BuildHandler(db *pgxpool.Pool, schemaName string, ps *ParsedSchema, scalars
 			Fields: inputFields,
 		})
 
+		maxLim := maxLimit
 		queryNS := graphql.NewObject(graphql.ObjectConfig{
 			Name: t.Name + "Query",
 			Fields: graphql.Fields{
 				"list": &graphql.Field{
 					Type: graphql.NewNonNull(graphql.NewList(graphql.NewNonNull(obj))),
+					Args: graphql.FieldConfigArgument{
+						"limit":  &graphql.ArgumentConfig{Type: intType},
+						"offset": &graphql.ArgumentConfig{Type: intType},
+					},
 					Resolve: func(p graphql.ResolveParams) (any, error) {
-						return listRecords(p.Context, db, tbl, colNames)
+						limit := 100
+						if limit > maxLim {
+							limit = maxLim
+						}
+						if v, ok := p.Args["limit"].(int); ok {
+							if v > maxLim {
+								return nil, fmt.Errorf("limit %d exceeds maximum %d", v, maxLim)
+							}
+							limit = v
+						}
+						if limit < 0 {
+							limit = 0
+						}
+						offset := 0
+						if v, ok := p.Args["offset"].(int); ok {
+							offset = v
+						}
+						if offset < 0 {
+							offset = 0
+						}
+						return listRecords(p.Context, db, tbl, colNames, limit, offset)
 					},
 				},
 				"get": &graphql.Field{
@@ -241,8 +274,10 @@ type scannable interface {
 	Err() error
 }
 
-func listRecords(ctx context.Context, db *pgxpool.Pool, tbl string, cols []string) ([]map[string]any, error) {
-	rows, err := db.Query(ctx, fmt.Sprintf("SELECT %s FROM %s", strings.Join(cols, ", "), tbl))
+func listRecords(ctx context.Context, db *pgxpool.Pool, tbl string, cols []string, limit, offset int) ([]map[string]any, error) {
+	q := fmt.Sprintf("SELECT %s FROM %s ORDER BY id LIMIT %d OFFSET %d",
+		strings.Join(cols, ", "), tbl, limit, offset)
+	rows, err := db.Query(ctx, q)
 	if err != nil {
 		return nil, fmt.Errorf("list %s: %w", tbl, err)
 	}
@@ -251,7 +286,7 @@ func listRecords(ctx context.Context, db *pgxpool.Pool, tbl string, cols []strin
 
 func scanList(rows scannable, cols []string, tbl string) ([]map[string]any, error) {
 	defer rows.Close()
-	var result []map[string]any
+	result := []map[string]any{}
 	for rows.Next() {
 		vals := make([]any, len(cols))
 		ptrs := make([]any, len(cols))

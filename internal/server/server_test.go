@@ -325,3 +325,10 @@ func TestReadiness_WithDetails(t *testing.T) {
 		t.Fatalf("expected 2 components, got %d", len(body.Components))
 	}
 }
+
+func TestWithMaxListLimit(t *testing.T) {
+	srv := NewStratumServer().WithMaxListLimit(500)
+	if srv.maxListLimit != 500 {
+		t.Errorf("maxListLimit = %d, want 500", srv.maxListLimit)
+	}
+}

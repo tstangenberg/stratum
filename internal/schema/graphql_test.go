@@ -51,7 +51,7 @@ func locationSchema() *schema.ParsedSchema {
 }
 
 func TestBuildHandler_Success(t *testing.T) {
-	h, err := schema.BuildHandler(nil, "test", locationSchema(), stringScalars())
+	h, err := schema.BuildHandler(nil, "test", locationSchema(), stringScalars(), 0)
 	if err != nil {
 		t.Fatalf("BuildHandler: %v", err)
 	}
@@ -68,7 +68,7 @@ func TestBuildHandler_UnknownScalarInField(t *testing.T) {
 			}},
 		},
 	}
-	_, err := schema.BuildHandler(nil, "test", ps, map[string]scalar.Plugin{})
+	_, err := schema.BuildHandler(nil, "test", ps, map[string]scalar.Plugin{}, 0)
 	if err == nil {
 		t.Fatal("expected error for unknown scalar in field")
 	}
@@ -83,14 +83,14 @@ func TestBuildHandler_SchemaConstructionError(t *testing.T) {
 			}},
 		},
 	}
-	_, err := schema.BuildHandler(nil, "test", ps, stringScalars())
+	_, err := schema.BuildHandler(nil, "test", ps, stringScalars(), 0)
 	if err == nil {
 		t.Fatal("expected error when type name collides with root Query")
 	}
 }
 
 func TestGQLHandler_BadJSON(t *testing.T) {
-	h, err := schema.BuildHandler(nil, "test", locationSchema(), stringScalars())
+	h, err := schema.BuildHandler(nil, "test", locationSchema(), stringScalars(), 0)
 	if err != nil {
 		t.Fatalf("BuildHandler: %v", err)
 	}
