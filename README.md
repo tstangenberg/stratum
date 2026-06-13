@@ -24,11 +24,13 @@ go build ./...
 go run ./cmd/stratum
 ```
 
-By default the server listens on `:8080`. Set `STRATUM_ADDR` to override:
+By default the server listens on `:8080`. Set `STRATUM_SERVER_ADDR` to override:
 
 ```bash
-STRATUM_ADDR=:9090 go run ./cmd/stratum
+STRATUM_SERVER_ADDR=:9090 go run ./cmd/stratum
 ```
+
+Copy `stratum.yaml.example` to `stratum.yaml` for file-based configuration. See `docs/decisions/ADR-1014-configuration-system.md` for details.
 
 ## Contributing
 

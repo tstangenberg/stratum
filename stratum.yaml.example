@@ -1,0 +1,18 @@
+# Stratum configuration file
+#
+# Copy this file to stratum.yaml and adjust values as needed.
+# Every leaf value is expanded to an environment variable:
+#   path segments joined with "_", uppercased, prefixed with "STRATUM_".
+#
+# Environment variables already set in the process always take precedence.
+
+server:
+  addr: ":8080"
+
+database:
+  url: "postgres://stratum:stratum@localhost:5432/stratum?sslmode=disable"
+
+# plugins:
+#   auth:
+#     api_keys:
+#       - changeme
