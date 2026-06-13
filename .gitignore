@@ -10,6 +10,9 @@
 .env.*
 !.env.example
 
+# Runtime config (may contain secrets)
+stratum.yaml
+
 # IDE
 .idea/
 .vscode/

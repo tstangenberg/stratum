@@ -18,15 +18,42 @@
 package e2e
 
 import (
+	"fmt"
+	"log"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 )
 
+var stratumBin string
+
 func TestMain(m *testing.M) {
 	ensureDockerHost()
-	os.Exit(m.Run())
+	bin, err := buildStratumBinary()
+	if err != nil {
+		log.Fatalf("build stratum binary: %v", err)
+	}
+	stratumBin = bin
+	code := m.Run()
+	os.Remove(stratumBin)
+	os.Exit(code)
+}
+
+func buildStratumBinary() (string, error) {
+	tmp, err := os.MkdirTemp("", "stratum-e2e-*")
+	if err != nil {
+		return "", err
+	}
+	bin := filepath.Join(tmp, "stratum")
+	cmd := exec.Command("go", "build", "-o", bin, "./cmd/stratum")
+	cmd.Dir = ".."
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("%v\n%s", err, out)
+	}
+	return bin, nil
 }
 
 // ensureDockerHost reads the active Docker context to find the socket path and

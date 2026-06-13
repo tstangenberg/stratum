@@ -1,7 +1,7 @@
 ---
 id: US-0057
 tags: [config, infrastructure]
-status: ready
+status: done
 ---
 
 # US-0057: Configuration system
@@ -18,15 +18,15 @@ The core reads a YAML file and blindly expands all leaf values to env vars using
 
 ## Acceptance Criteria
 
-- [ ] `internal/config.Load()` is called at the top of `main()` before any other initialization
-- [ ] `Load()` resolves the config file in order: `STRATUM_CONFIG` env var → `./stratum.yaml` → no file (not an error)
-- [ ] Every YAML leaf value is expanded to an env var: path segments joined with `_`, uppercased, prefixed with `STRATUM_`
-- [ ] `Load()` never overwrites an env var that is already set in the process environment
-- [ ] YAML lists are comma-joined: `[a, b]` → `"a,b"`
-- [ ] `STRATUM_ADDR` is renamed to `STRATUM_SERVER_ADDR` in `main.go`
-- [ ] `DATABASE_URL` is renamed to `STRATUM_DATABASE_URL` in `main.go`
-- [ ] A `stratum.yaml` example is added to the repo root (not committed as the default — as a `stratum.yaml.example`)
-- [ ] `gopkg.in/yaml.v3` is added to `go.mod`
+- [x] `internal/config.Load()` is called at the top of `main()` before any other initialization
+- [x] `Load()` resolves the config file in order: `STRATUM_CONFIG` env var → `./stratum.yaml` → no file (not an error)
+- [x] Every YAML leaf value is expanded to an env var: path segments joined with `_`, uppercased, prefixed with `STRATUM_`
+- [x] `Load()` never overwrites an env var that is already set in the process environment
+- [x] YAML lists are comma-joined: `[a, b]` → `"a,b"`
+- [x] `STRATUM_ADDR` is renamed to `STRATUM_SERVER_ADDR` in `main.go`
+- [x] `DATABASE_URL` is renamed to `STRATUM_DATABASE_URL` in `main.go`
+- [x] A `stratum.yaml` example is added to the repo root (not committed as the default — as a `stratum.yaml.example`)
+- [x] `gopkg.in/yaml.v3` is added to `go.mod`
 
 ## E2E Tests
 
