@@ -56,7 +56,7 @@ func New() *Plugin {
 	return p
 }
 
-func (p *Plugin) Name() string { return "pagination-simple" }
+func (p *Plugin) Name() string { return "pagination" }
 
 // Arguments returns the limit and offset GraphQL argument configs.
 func (p *Plugin) Arguments(intType graphql.Output) graphql.FieldConfigArgument {

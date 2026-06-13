@@ -333,7 +333,7 @@ func TestWithPagination(t *testing.T) {
 	if srv.pagination == nil {
 		t.Fatal("expected pagination plugin to be set")
 	}
-	if srv.pagination.Name() != "pagination-simple" {
-		t.Errorf("pagination.Name() = %q, want %q", srv.pagination.Name(), "pagination-simple")
+	if srv.pagination.Name() != "pagination" {
+		t.Errorf("pagination.Name() = %q, want %q", srv.pagination.Name(), "pagination")
 	}
 }

@@ -26,8 +26,8 @@ import (
 
 func TestName(t *testing.T) {
 	p := simple.New()
-	if p.Name() != "pagination-simple" {
-		t.Errorf("Name() = %q, want %q", p.Name(), "pagination-simple")
+	if p.Name() != "pagination" {
+		t.Errorf("Name() = %q, want %q", p.Name(), "pagination")
 	}
 }
 
@@ -123,6 +123,19 @@ func TestNew_ReadsDefaultLimitFromEnv(t *testing.T) {
 	}
 	if limit != 50 {
 		t.Errorf("limit = %d, want 50", limit)
+	}
+}
+
+func TestApplySQL_DefaultLimitExceedsMax_ClampedToMax(t *testing.T) {
+	t.Setenv("STRATUM_PLUGINS_PAGINATION_DEFAULT_LIMIT", "200")
+	t.Setenv("STRATUM_PLUGINS_PAGINATION_MAX_LIMIT", "100")
+	p := simple.New()
+	limit, _, err := p.ApplySQL(map[string]any{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if limit != 100 {
+		t.Errorf("limit = %d, want 100", limit)
 	}
 }
 
