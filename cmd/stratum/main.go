@@ -25,19 +25,23 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/tstangenberg/stratum/internal/config"
 	"github.com/tstangenberg/stratum/internal/plugin"
 	dbplugin "github.com/tstangenberg/stratum/internal/plugin/database"
 	"github.com/tstangenberg/stratum/internal/server"
 )
 
 func resolveAddr() string {
-	if addr := os.Getenv("STRATUM_ADDR"); addr != "" {
+	if addr := os.Getenv("STRATUM_SERVER_ADDR"); addr != "" {
 		return addr
 	}
 	return ":8080"
 }
 
 func main() {
+	if err := config.Load(); err != nil {
+		log.Fatal(err)
+	}
 	addr := resolveAddr()
 	log.Printf("listening on %s", addr)
 	if err := run(addr); err != nil {
@@ -58,9 +62,9 @@ func run(addr string) error {
 }
 
 func defaultPlugins() (*pgxpool.Pool, []plugin.HealthPlugin) {
-	dsn := os.Getenv("DATABASE_URL")
+	dsn := os.Getenv("STRATUM_DATABASE_URL")
 	if dsn == "" {
-		log.Printf("DATABASE_URL not set; database health check and schema operations disabled")
+		log.Printf("STRATUM_DATABASE_URL not set; database health check and schema operations disabled")
 		return nil, nil
 	}
 	pool, err := pgxpool.New(context.Background(), dsn)

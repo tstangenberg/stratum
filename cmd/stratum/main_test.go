@@ -23,7 +23,7 @@ import (
 )
 
 func TestResolveAddr_DefaultsTo8080(t *testing.T) {
-	os.Unsetenv("STRATUM_ADDR")
+	os.Unsetenv("STRATUM_SERVER_ADDR")
 	got := resolveAddr()
 	if got != ":8080" {
 		t.Errorf("resolveAddr() = %q, want %q", got, ":8080")
@@ -31,8 +31,8 @@ func TestResolveAddr_DefaultsTo8080(t *testing.T) {
 }
 
 func TestResolveAddr_UsesEnvVar(t *testing.T) {
-	os.Setenv("STRATUM_ADDR", ":9090")
-	defer os.Unsetenv("STRATUM_ADDR")
+	os.Setenv("STRATUM_SERVER_ADDR", ":9090")
+	defer os.Unsetenv("STRATUM_SERVER_ADDR")
 	got := resolveAddr()
 	if got != ":9090" {
 		t.Errorf("resolveAddr() = %q, want %q", got, ":9090")
