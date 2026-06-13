@@ -12,7 +12,7 @@ status: done
 
 ## Context
 
-The `list` query is generated for every type. `limit` is provided by the core (default 100, hard max configurable via `STRATUM_SERVER_LIST_MAX_LIMIT`, default 1000). `offset` is provided by the `pagination-simple` plugin from the MVP bundle. See ADR-1008 (plugin architecture) and US-0057 (configuration system).
+The `list` query is generated for every type. `limit` and `offset` are provided by the `pagination-simple` plugin from the MVP bundle. See ADR-1008 (plugin architecture) and US-0057 (configuration system).
 
 ## Acceptance Criteria
 
@@ -20,7 +20,8 @@ The `list` query is generated for every type. `limit` is provided by the core (d
 - [x] `list(limit: N)` returns at most N records
 - [x] `list(limit: N, offset: M)` skips the first M records
 - [x] `limit` exceeding the hard maximum returns a GraphQL error
-- [x] The hard maximum is read from `STRATUM_SERVER_LIST_MAX_LIMIT` at startup (default: 1000)
+- [x] The hard maximum is read from `STRATUM_PLUGINS_PAGINATION_MAX_LIMIT` at startup via `pagination-simple` plugin (default: 1000)
+- [x] The default page size is read from `STRATUM_PLUGINS_PAGINATION_DEFAULT_LIMIT` at startup via `pagination-simple` plugin (default: 100)
 - [x] Empty table returns an empty array, not an error
 - [x] Returns records in a stable order (insertion order by default)
 
