@@ -93,3 +93,97 @@ func TestParseSDL_NoObjectTypes(t *testing.T) {
 		t.Fatal("expected error when SDL has no non-builtin object types")
 	}
 }
+
+func TestParseSDL_RelationField(t *testing.T) {
+	sdl := `
+		type Kanton { id: ID! name: String! }
+		type Ortschaft { id: ID! name: String! kanton: Kanton! }
+	`
+	ps, err := schema.ParseSDL(sdl)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(ps.Types) != 2 {
+		t.Fatalf("expected 2 types, got %d", len(ps.Types))
+	}
+
+	var ort schema.TypeDef
+	for _, td := range ps.Types {
+		if td.Name == "Ortschaft" {
+			ort = td
+			break
+		}
+	}
+	if ort.Name == "" {
+		t.Fatal("type Ortschaft not found")
+	}
+
+	kf, ok := findField(ort.Fields, "kanton")
+	if !ok {
+		t.Fatal("field 'kanton' not found in Ortschaft")
+	}
+	if !kf.IsRelation {
+		t.Error("field kanton.IsRelation = false, want true")
+	}
+	if kf.Type != "Kanton" {
+		t.Errorf("field kanton.Type = %q, want %q", kf.Type, "Kanton")
+	}
+	if !kf.NonNull {
+		t.Error("field kanton.NonNull = false, want true")
+	}
+}
+
+func TestParseSDL_TopologicalOrder(t *testing.T) {
+	sdl := `
+		type PLZ { id: ID! code: String! ortschaft: Ortschaft! }
+		type Kanton { id: ID! name: String! }
+		type Ortschaft { id: ID! name: String! kanton: Kanton! }
+	`
+	ps, err := schema.ParseSDL(sdl)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(ps.Types) != 3 {
+		t.Fatalf("expected 3 types, got %d", len(ps.Types))
+	}
+
+	// Kanton must come before Ortschaft, Ortschaft before PLZ
+	indexOf := func(name string) int {
+		for i, td := range ps.Types {
+			if td.Name == name {
+				return i
+			}
+		}
+		return -1
+	}
+	if indexOf("Kanton") > indexOf("Ortschaft") {
+		t.Error("Kanton should appear before Ortschaft")
+	}
+	if indexOf("Ortschaft") > indexOf("PLZ") {
+		t.Error("Ortschaft should appear before PLZ")
+	}
+}
+
+func TestParseSDL_CircularRelation(t *testing.T) {
+	sdl := `
+		type A { id: ID! b: B! }
+		type B { id: ID! a: A! }
+	`
+	_, err := schema.ParseSDL(sdl)
+	if err == nil {
+		t.Fatal("expected error for circular relation")
+	}
+}
+
+func TestParseSDL_ScalarFieldNotRelation(t *testing.T) {
+	sdl := `type Location { id: ID! name: String! }`
+	ps, err := schema.ParseSDL(sdl)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for _, f := range ps.Types[0].Fields {
+		if f.IsRelation {
+			t.Errorf("field %q.IsRelation = true, want false", f.Name)
+		}
+	}
+}

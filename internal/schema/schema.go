@@ -35,9 +35,10 @@ type TypeDef struct {
 
 // FieldDef represents a single field within an object type.
 type FieldDef struct {
-	Name    string
-	Type    string // SDL scalar name: "String", "ID", "Int", etc.
-	NonNull bool
+	Name       string
+	Type       string // SDL scalar name or referenced type name for relations.
+	NonNull    bool
+	IsRelation bool // true when Type refers to another object type (N:1 relation).
 }
 
 // Schema is a stored, live schema with its metadata and active GraphQL handler.

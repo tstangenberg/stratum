@@ -294,6 +294,275 @@ func TestGraphQLResolvers_NullableField(t *testing.T) {
 	}
 }
 
+func TestCreateTable_WithRelation(t *testing.T) {
+	pool := startPool(t)
+	ctx := context.Background()
+
+	kantonTD := schema.TypeDef{
+		Name: "Kanton",
+		Fields: []schema.FieldDef{
+			{Name: "id", Type: "ID", NonNull: true},
+			{Name: "name", Type: "String", NonNull: true},
+		},
+	}
+	ortTD := schema.TypeDef{
+		Name: "Ortschaft",
+		Fields: []schema.FieldDef{
+			{Name: "id", Type: "ID", NonNull: true},
+			{Name: "name", Type: "String", NonNull: true},
+			{Name: "kanton", Type: "Kanton", NonNull: true, IsRelation: true},
+		},
+	}
+	scalars := schemaScalars()
+
+	if err := schema.CreateTable(ctx, pool, "test", kantonTD, scalars); err != nil {
+		t.Fatalf("CreateTable Kanton: %v", err)
+	}
+	if err := schema.CreateTable(ctx, pool, "test", ortTD, scalars); err != nil {
+		t.Fatalf("CreateTable Ortschaft: %v", err)
+	}
+
+	var colName string
+	err := pool.QueryRow(ctx,
+		`SELECT column_name FROM information_schema.columns
+		 WHERE table_name = 'test_ortschaft' AND column_name = 'kanton_id'`).Scan(&colName)
+	if err != nil {
+		t.Fatalf("expected kanton_id column: %v", err)
+	}
+}
+
+func TestCreateTable_NullableRelation(t *testing.T) {
+	pool := startPool(t)
+	ctx := context.Background()
+
+	parentTD := schema.TypeDef{
+		Name: "Parent",
+		Fields: []schema.FieldDef{
+			{Name: "id", Type: "ID", NonNull: true},
+		},
+	}
+	childTD := schema.TypeDef{
+		Name: "Child",
+		Fields: []schema.FieldDef{
+			{Name: "id", Type: "ID", NonNull: true},
+			{Name: "parent", Type: "Parent", NonNull: false, IsRelation: true},
+		},
+	}
+	scalars := schemaScalars()
+
+	if err := schema.CreateTable(ctx, pool, "test", parentTD, scalars); err != nil {
+		t.Fatalf("CreateTable Parent: %v", err)
+	}
+	if err := schema.CreateTable(ctx, pool, "test", childTD, scalars); err != nil {
+		t.Fatalf("CreateTable Child: %v", err)
+	}
+
+	// Insert a child without a parent reference (NULL FK)
+	_, err := pool.Exec(ctx, `INSERT INTO test_child (id) VALUES ('c1')`)
+	if err != nil {
+		t.Fatalf("insert child with null FK: %v", err)
+	}
+}
+
+func TestGraphQLResolvers_Relation(t *testing.T) {
+	pool := startPool(t)
+	ctx := context.Background()
+
+	kantonTD := schema.TypeDef{
+		Name: "Kanton",
+		Fields: []schema.FieldDef{
+			{Name: "id", Type: "ID", NonNull: true},
+			{Name: "name", Type: "String", NonNull: true},
+		},
+	}
+	ortTD := schema.TypeDef{
+		Name: "Ortschaft",
+		Fields: []schema.FieldDef{
+			{Name: "id", Type: "ID", NonNull: true},
+			{Name: "name", Type: "String", NonNull: true},
+			{Name: "kanton", Type: "Kanton", NonNull: true, IsRelation: true},
+		},
+	}
+	scalars := schemaScalars()
+
+	if err := schema.CreateTable(ctx, pool, "test", kantonTD, scalars); err != nil {
+		t.Fatalf("CreateTable Kanton: %v", err)
+	}
+	if err := schema.CreateTable(ctx, pool, "test", ortTD, scalars); err != nil {
+		t.Fatalf("CreateTable Ortschaft: %v", err)
+	}
+
+	ps := &schema.ParsedSchema{Types: []schema.TypeDef{kantonTD, ortTD}}
+	h, err := schema.BuildHandler(pool, "test", ps, scalars)
+	if err != nil {
+		t.Fatalf("BuildHandler: %v", err)
+	}
+
+	do := func(body string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodPost, "/graphql/test", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, req)
+		return w
+	}
+
+	// Create a Kanton
+	createK := do(`{"query":"mutation { kanton { create(input: {name: \"Zürich\"}) { id name } } }"}`)
+	var kRes struct {
+		Data struct {
+			Kanton struct {
+				Create struct {
+					ID   string `json:"id"`
+					Name string `json:"name"`
+				} `json:"create"`
+			} `json:"kanton"`
+		} `json:"data"`
+		Errors []struct{ Message string } `json:"errors"`
+	}
+	if err := json.NewDecoder(createK.Body).Decode(&kRes); err != nil {
+		t.Fatalf("kanton decode: %v", err)
+	}
+	if len(kRes.Errors) > 0 {
+		t.Fatalf("kanton errors: %v", kRes.Errors)
+	}
+	kantonID := kRes.Data.Kanton.Create.ID
+
+	// Create Ortschaft with relation
+	createO := do(`{"query":"mutation { ortschaft { create(input: {name: \"Winterthur\", kantonId: \"` + kantonID + `\"}) { id name kanton { id name } } } }"}`)
+	var oRes struct {
+		Data struct {
+			Ortschaft struct {
+				Create struct {
+					ID     string `json:"id"`
+					Name   string `json:"name"`
+					Kanton struct {
+						ID   string `json:"id"`
+						Name string `json:"name"`
+					} `json:"kanton"`
+				} `json:"create"`
+			} `json:"ortschaft"`
+		} `json:"data"`
+		Errors []struct{ Message string } `json:"errors"`
+	}
+	if err := json.NewDecoder(createO.Body).Decode(&oRes); err != nil {
+		t.Fatalf("ortschaft decode: %v", err)
+	}
+	if len(oRes.Errors) > 0 {
+		t.Fatalf("ortschaft errors: %v", oRes.Errors)
+	}
+	if oRes.Data.Ortschaft.Create.Kanton.ID != kantonID {
+		t.Errorf("kanton.id = %q, want %q", oRes.Data.Ortschaft.Create.Kanton.ID, kantonID)
+	}
+
+	// Get with relation traversal
+	getO := do(`{"query":"{ ortschaft { get(id: \"` + oRes.Data.Ortschaft.Create.ID + `\") { id kanton { id name } } } }"}`)
+	var gRes struct {
+		Data struct {
+			Ortschaft struct {
+				Get struct {
+					Kanton struct {
+						ID   string `json:"id"`
+						Name string `json:"name"`
+					} `json:"kanton"`
+				} `json:"get"`
+			} `json:"ortschaft"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(getO.Body).Decode(&gRes); err != nil {
+		t.Fatalf("get decode: %v", err)
+	}
+	if gRes.Data.Ortschaft.Get.Kanton.ID != kantonID {
+		t.Errorf("get: kanton.id = %q, want %q", gRes.Data.Ortschaft.Get.Kanton.ID, kantonID)
+	}
+
+	// List with relation
+	listO := do(`{"query":"{ ortschaft { list { id name kanton { id } } } }"}`)
+	if listO.Code != http.StatusOK {
+		t.Fatalf("list: expected 200, got %d", listO.Code)
+	}
+
+	// Non-existent FK returns error
+	badFK := do(`{"query":"mutation { ortschaft { create(input: {name: \"Ghost\", kantonId: \"nonexistent\"}) { id } } }"}`)
+	var badRes struct {
+		Errors []struct{ Message string } `json:"errors"`
+	}
+	if err := json.NewDecoder(badFK.Body).Decode(&badRes); err != nil {
+		t.Fatalf("bad fk decode: %v", err)
+	}
+	if len(badRes.Errors) == 0 {
+		t.Fatal("expected error for non-existent FK")
+	}
+}
+
+func TestGraphQLResolvers_NullableRelation(t *testing.T) {
+	pool := startPool(t)
+	ctx := context.Background()
+
+	parentTD := schema.TypeDef{
+		Name: "Author",
+		Fields: []schema.FieldDef{
+			{Name: "id", Type: "ID", NonNull: true},
+			{Name: "name", Type: "String", NonNull: true},
+		},
+	}
+	childTD := schema.TypeDef{
+		Name: "Book",
+		Fields: []schema.FieldDef{
+			{Name: "id", Type: "ID", NonNull: true},
+			{Name: "title", Type: "String", NonNull: true},
+			{Name: "author", Type: "Author", NonNull: false, IsRelation: true},
+		},
+	}
+	scalars := schemaScalars()
+
+	if err := schema.CreateTable(ctx, pool, "test", parentTD, scalars); err != nil {
+		t.Fatalf("CreateTable Author: %v", err)
+	}
+	if err := schema.CreateTable(ctx, pool, "test", childTD, scalars); err != nil {
+		t.Fatalf("CreateTable Book: %v", err)
+	}
+
+	ps := &schema.ParsedSchema{Types: []schema.TypeDef{parentTD, childTD}}
+	h, err := schema.BuildHandler(pool, "test", ps, scalars)
+	if err != nil {
+		t.Fatalf("BuildHandler: %v", err)
+	}
+
+	do := func(body string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodPost, "/graphql/test", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, req)
+		return w
+	}
+
+	// Create Book without author (nullable FK, omit the field)
+	createB := do(`{"query":"mutation { book { create(input: {title: \"1984\"}) { id title author { id } } } }"}`)
+	var bRes struct {
+		Data struct {
+			Book struct {
+				Create struct {
+					ID     string `json:"id"`
+					Title  string `json:"title"`
+					Author *struct {
+						ID string `json:"id"`
+					} `json:"author"`
+				} `json:"create"`
+			} `json:"book"`
+		} `json:"data"`
+		Errors []struct{ Message string } `json:"errors"`
+	}
+	if err := json.NewDecoder(createB.Body).Decode(&bRes); err != nil {
+		t.Fatalf("book decode: %v", err)
+	}
+	if len(bRes.Errors) > 0 {
+		t.Fatalf("book errors: %v", bRes.Errors)
+	}
+	if bRes.Data.Book.Create.Author != nil && bRes.Data.Book.Create.Author.ID != "" {
+		t.Error("expected nil/empty author for book created without authorId")
+	}
+}
+
 func TestGraphQLResolvers_ClosedPool(t *testing.T) {
 	pool := startPool(t)
 	ctx := context.Background()

@@ -29,11 +29,23 @@ import (
 // CreateTable creates a PostgreSQL table for the given TypeDef.
 // Table name convention: {schemaName}_{typeName_lowercase}.
 // The "id" field is always TEXT PRIMARY KEY regardless of its SDL scalar.
+// Relation fields produce a FK column: {snake_field_name}_id TEXT [NOT NULL]
+// REFERENCES {schemaName}_{referencedType}(id).
 func CreateTable(ctx context.Context, db *pgxpool.Pool, schemaName string, t TypeDef, scalars map[string]scalar.Plugin) error {
 	tblName := tableName(schemaName, t.Name)
 	cols := []string{"id TEXT PRIMARY KEY"}
 	for _, f := range t.Fields {
 		if f.Name == "id" {
+			continue
+		}
+		if f.IsRelation {
+			col := fkColumnName(f.Name)
+			refTbl := tableName(schemaName, f.Type)
+			null := ""
+			if f.NonNull {
+				null = " NOT NULL"
+			}
+			cols = append(cols, fmt.Sprintf("%s TEXT%s REFERENCES %s(id)", col, null, refTbl))
 			continue
 		}
 		p, ok := scalars[f.Type]

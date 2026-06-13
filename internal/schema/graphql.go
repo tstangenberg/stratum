@@ -32,21 +32,46 @@ import (
 
 // BuildHandler creates an HTTP handler that serves GraphQL for the given schema.
 // It builds a dynamic graphql-go schema with Query (list, get) and Mutation (create) per type.
+// Relation fields are resolved by loading the referenced record from the DB.
 func BuildHandler(db *pgxpool.Pool, schemaName string, ps *ParsedSchema, scalars map[string]scalar.Plugin) (http.Handler, error) {
+	typeIndex := make(map[string]TypeDef, len(ps.Types))
+	for _, t := range ps.Types {
+		typeIndex[t.Name] = t
+	}
+
 	gqlObjects := make(map[string]*graphql.Object, len(ps.Types))
 	for _, t := range ps.Types {
-		fields := graphql.Fields{}
+		gqlObjects[t.Name] = graphql.NewObject(graphql.ObjectConfig{
+			Name:   t.Name,
+			Fields: graphql.Fields{},
+		})
+	}
+
+	for _, t := range ps.Types {
+		obj := gqlObjects[t.Name]
 		for _, f := range t.Fields {
+			if f.IsRelation {
+				relObj := gqlObjects[f.Type]
+				relTbl := tableName(schemaName, f.Type)
+				relCols := columnNames(typeIndex[f.Type])
+				fkCol := fkColumnName(f.Name)
+				fieldName := f.Name
+				var relType graphql.Output = relObj
+				if f.NonNull {
+					relType = graphql.NewNonNull(relObj)
+				}
+				obj.AddFieldConfig(fieldName, &graphql.Field{
+					Type:    relType,
+					Resolve: resolveRelation(db, relTbl, relCols, fkCol),
+				})
+				continue
+			}
 			ft, err := scalarToGraphQL(f, scalars)
 			if err != nil {
 				return nil, err
 			}
-			fields[f.Name] = &graphql.Field{Type: ft}
+			obj.AddFieldConfig(f.Name, &graphql.Field{Type: ft})
 		}
-		gqlObjects[t.Name] = graphql.NewObject(graphql.ObjectConfig{
-			Name:   t.Name,
-			Fields: fields,
-		})
 	}
 
 	queryFields := graphql.Fields{}
@@ -55,16 +80,24 @@ func BuildHandler(db *pgxpool.Pool, schemaName string, ps *ParsedSchema, scalars
 	for _, t := range ps.Types {
 		obj := gqlObjects[t.Name]
 		tbl := tableName(schemaName, t.Name)
-		colNames := fieldNames(t)
+		colNames := columnNames(t)
 
 		inputFields := graphql.InputObjectConfigFieldMap{}
 		for _, f := range t.Fields {
 			if f.Name == "id" {
-				// ID is optional on input — omitting it triggers auto-generation.
 				inputFields["id"] = &graphql.InputObjectFieldConfig{Type: scalars["ID"].GraphQLType()}
 				continue
 			}
-			ft, _ := scalarToGraphQL(f, scalars) // scalars already validated in output-fields loop above
+			if f.IsRelation {
+				inName := fkInputName(f.Name)
+				var ft graphql.Input = graphql.ID
+				if f.NonNull {
+					ft = graphql.NewNonNull(graphql.ID)
+				}
+				inputFields[inName] = &graphql.InputObjectFieldConfig{Type: ft}
+				continue
+			}
+			ft, _ := scalarToGraphQL(f, scalars)
 			inputFields[f.Name] = &graphql.InputObjectFieldConfig{Type: ft}
 		}
 		inputObj := graphql.NewInputObject(graphql.InputObjectConfig{
@@ -137,6 +170,21 @@ func BuildHandler(db *pgxpool.Pool, schemaName string, ps *ParsedSchema, scalars
 	return &gqlHandler{schema: gqlSchema}, nil
 }
 
+// resolveRelation returns a GraphQL resolver that loads the related record by FK.
+func resolveRelation(db *pgxpool.Pool, relTbl string, relCols []string, fkCol string) graphql.FieldResolveFn {
+	return func(p graphql.ResolveParams) (any, error) {
+		src, ok := p.Source.(map[string]any)
+		if !ok {
+			return nil, nil
+		}
+		fkID, ok := src[fkCol].(string)
+		if !ok || fkID == "" {
+			return nil, nil
+		}
+		return getRecord(p.Context, db, relTbl, relCols, fkID)
+	}
+}
+
 type gqlHandler struct{ schema graphql.Schema }
 
 func (h *gqlHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -171,12 +219,18 @@ func scalarToGraphQL(f FieldDef, scalars map[string]scalar.Plugin) (graphql.Outp
 	return base, nil
 }
 
-func fieldNames(t TypeDef) []string {
-	names := make([]string, len(t.Fields))
-	for i, f := range t.Fields {
-		names[i] = f.Name
+// columnNames returns the actual PostgreSQL column names for a type's fields.
+// Relation fields are mapped to their FK column name (e.g. kanton → kanton_id).
+func columnNames(t TypeDef) []string {
+	var cols []string
+	for _, f := range t.Fields {
+		if f.IsRelation {
+			cols = append(cols, fkColumnName(f.Name))
+		} else {
+			cols = append(cols, f.Name)
+		}
 	}
-	return names
+	return cols
 }
 
 // scannable is the subset of pgx.Rows used by scanList.
@@ -251,6 +305,18 @@ func createRecord(ctx context.Context, db *pgxpool.Pool, tbl string, fields []Fi
 		if f.Name == "id" {
 			continue
 		}
+		if f.IsRelation {
+			inName := fkInputName(f.Name)
+			val, ok := input[inName]
+			if !ok {
+				continue
+			}
+			cols = append(cols, fkColumnName(f.Name))
+			args = append(args, val)
+			placeholders = append(placeholders, fmt.Sprintf("$%d", ph))
+			ph++
+			continue
+		}
 		val, ok := input[f.Name]
 		if !ok {
 			continue
@@ -268,6 +334,13 @@ func createRecord(ctx context.Context, db *pgxpool.Pool, tbl string, fields []Fi
 	row := map[string]any{"id": id}
 	for _, f := range fields {
 		if f.Name == "id" {
+			continue
+		}
+		if f.IsRelation {
+			inName := fkInputName(f.Name)
+			if val, ok := input[inName]; ok {
+				row[fkColumnName(f.Name)] = val
+			}
 			continue
 		}
 		if val, ok := input[f.Name]; ok {
