@@ -28,6 +28,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/tstangenberg/stratum/internal/plugin"
+	simplepagination "github.com/tstangenberg/stratum/internal/plugin/pagination/simple"
 )
 
 var h = Handler(NewStratumServer())
@@ -326,9 +327,13 @@ func TestReadiness_WithDetails(t *testing.T) {
 	}
 }
 
-func TestWithMaxListLimit(t *testing.T) {
-	srv := NewStratumServer().WithMaxListLimit(500)
-	if srv.maxListLimit != 500 {
-		t.Errorf("maxListLimit = %d, want 500", srv.maxListLimit)
+func TestWithPagination(t *testing.T) {
+	p := simplepagination.New()
+	srv := NewStratumServer().WithPagination(p)
+	if srv.pagination == nil {
+		t.Fatal("expected pagination plugin to be set")
+	}
+	if srv.pagination.Name() != "pagination-simple" {
+		t.Errorf("pagination.Name() = %q, want %q", srv.pagination.Name(), "pagination-simple")
 	}
 }

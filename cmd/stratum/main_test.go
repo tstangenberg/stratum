@@ -36,19 +36,3 @@ func TestResolveAddr_UsesEnvVar(t *testing.T) {
 		t.Errorf("resolveAddr() = %q, want %q", got, ":9090")
 	}
 }
-
-func TestResolveMaxListLimit_Default(t *testing.T) {
-	t.Setenv("STRATUM_SERVER_LIST_MAX_LIMIT", "")
-	got := resolveMaxListLimit()
-	if got != 0 {
-		t.Errorf("resolveMaxListLimit() = %d, want 0", got)
-	}
-}
-
-func TestResolveMaxListLimit_FromEnv(t *testing.T) {
-	t.Setenv("STRATUM_SERVER_LIST_MAX_LIMIT", "500")
-	got := resolveMaxListLimit()
-	if got != 500 {
-		t.Errorf("resolveMaxListLimit() = %d, want 500", got)
-	}
-}

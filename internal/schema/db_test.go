@@ -31,6 +31,7 @@ import (
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/wait"
 
+	"github.com/tstangenberg/stratum/internal/plugin/pagination/simple"
 	"github.com/tstangenberg/stratum/internal/plugin/scalar"
 	idscalar "github.com/tstangenberg/stratum/internal/plugin/scalar/id"
 	intscalar "github.com/tstangenberg/stratum/internal/plugin/scalar/int"
@@ -171,7 +172,7 @@ func TestGraphQLResolvers(t *testing.T) {
 	}
 
 	ps := &schema.ParsedSchema{Types: []schema.TypeDef{td}}
-	h, err := schema.BuildHandler(pool, "test", ps, scalars, 0)
+	h, err := schema.BuildHandler(pool, "test", ps, scalars, simple.New())
 	if err != nil {
 		t.Fatalf("BuildHandler: %v", err)
 	}
@@ -279,7 +280,7 @@ func TestGraphQLResolvers_NullableField(t *testing.T) {
 	}
 
 	ps := &schema.ParsedSchema{Types: []schema.TypeDef{td}}
-	h, err := schema.BuildHandler(pool, "test", ps, scalars, 0)
+	h, err := schema.BuildHandler(pool, "test", ps, scalars, simple.New())
 	if err != nil {
 		t.Fatalf("BuildHandler: %v", err)
 	}
@@ -394,7 +395,7 @@ func TestGraphQLResolvers_Relation(t *testing.T) {
 	}
 
 	ps := &schema.ParsedSchema{Types: []schema.TypeDef{kantonTD, ortTD}}
-	h, err := schema.BuildHandler(pool, "test", ps, scalars, 0)
+	h, err := schema.BuildHandler(pool, "test", ps, scalars, simple.New())
 	if err != nil {
 		t.Fatalf("BuildHandler: %v", err)
 	}
@@ -524,7 +525,7 @@ func TestGraphQLResolvers_NullableRelation(t *testing.T) {
 	}
 
 	ps := &schema.ParsedSchema{Types: []schema.TypeDef{parentTD, childTD}}
-	h, err := schema.BuildHandler(pool, "test", ps, scalars, 0)
+	h, err := schema.BuildHandler(pool, "test", ps, scalars, simple.New())
 	if err != nil {
 		t.Fatalf("BuildHandler: %v", err)
 	}
@@ -576,7 +577,7 @@ func TestGraphQLResolvers_ClosedPool(t *testing.T) {
 	}
 
 	ps := &schema.ParsedSchema{Types: []schema.TypeDef{td}}
-	h, err := schema.BuildHandler(pool, "test", ps, scalars, 0)
+	h, err := schema.BuildHandler(pool, "test", ps, scalars, simple.New())
 	if err != nil {
 		t.Fatalf("BuildHandler: %v", err)
 	}
@@ -614,8 +615,9 @@ func TestGraphQLResolvers_ListPagination(t *testing.T) {
 		t.Fatalf("CreateTable: %v", err)
 	}
 
+	t.Setenv("STRATUM_PLUGINS_PAGINATION_MAX_LIMIT", "5")
 	ps := &schema.ParsedSchema{Types: []schema.TypeDef{td}}
-	h, err := schema.BuildHandler(pool, "test", ps, scalars, 5)
+	h, err := schema.BuildHandler(pool, "test", ps, scalars, simple.New())
 	if err != nil {
 		t.Fatalf("BuildHandler: %v", err)
 	}

@@ -29,6 +29,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/tstangenberg/stratum/internal/api"
 	"github.com/tstangenberg/stratum/internal/plugin"
+	"github.com/tstangenberg/stratum/internal/plugin/pagination"
+	simplepagination "github.com/tstangenberg/stratum/internal/plugin/pagination/simple"
 	"github.com/tstangenberg/stratum/internal/plugin/scalar"
 	booleanscalar "github.com/tstangenberg/stratum/internal/plugin/scalar/boolean"
 	floatscalar "github.com/tstangenberg/stratum/internal/plugin/scalar/float"
@@ -46,7 +48,7 @@ type StratumServer struct {
 	db            *pgxpool.Pool
 	schemas       *schema.Store
 	scalars       map[string]scalar.Plugin
-	maxListLimit  int
+	pagination    pagination.Plugin
 }
 
 // NewStratumServer creates a new StratumServer with the given health plugins.
@@ -54,6 +56,7 @@ func NewStratumServer(plugins ...plugin.HealthPlugin) *StratumServer {
 	return &StratumServer{
 		healthPlugins: plugins,
 		schemas:       schema.NewStore(),
+		pagination:    simplepagination.New(),
 		scalars: map[string]scalar.Plugin{
 			"String":  stringscalar.Plugin{},
 			"ID":      idscalar.Plugin{},
@@ -70,9 +73,9 @@ func (s *StratumServer) WithDB(db *pgxpool.Pool) *StratumServer {
 	return s
 }
 
-// WithMaxListLimit sets the hard maximum for list pagination and returns the server for chaining.
-func (s *StratumServer) WithMaxListLimit(n int) *StratumServer {
-	s.maxListLimit = n
+// WithPagination sets the PaginationPlugin and returns the server for chaining.
+func (s *StratumServer) WithPagination(p pagination.Plugin) *StratumServer {
+	s.pagination = p
 	return s
 }
 
@@ -180,7 +183,7 @@ func (s *StratumServer) UpsertSchema(ctx context.Context, req api.UpsertSchemaRe
 		}
 	}
 
-	h, err := schema.BuildHandler(s.db, name, ps, s.scalars, s.maxListLimit)
+	h, err := schema.BuildHandler(s.db, name, ps, s.scalars, s.pagination)
 	if err != nil {
 		return nil, fmt.Errorf("upsert schema %q: build handler: %w", name, err)
 	}

@@ -27,17 +27,14 @@ import (
 
 	"github.com/graphql-go/graphql"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/tstangenberg/stratum/internal/plugin/pagination"
 	"github.com/tstangenberg/stratum/internal/plugin/scalar"
 )
 
 // BuildHandler creates an HTTP handler that serves GraphQL for the given schema.
 // It builds a dynamic graphql-go schema with Query (list, get) and Mutation (create) per type.
 // Relation fields are resolved by loading the referenced record from the DB.
-// maxLimit sets the hard maximum for list pagination (0 means default 1000).
-func BuildHandler(db *pgxpool.Pool, schemaName string, ps *ParsedSchema, scalars map[string]scalar.Plugin, maxLimit int) (http.Handler, error) {
-	if maxLimit <= 0 {
-		maxLimit = 1000
-	}
+func BuildHandler(db *pgxpool.Pool, schemaName string, ps *ParsedSchema, scalars map[string]scalar.Plugin, pag pagination.Plugin) (http.Handler, error) {
 	intType := graphql.Int
 	if s, ok := scalars["Int"]; ok {
 		intType = s.GraphQLType()
@@ -113,36 +110,16 @@ func BuildHandler(db *pgxpool.Pool, schemaName string, ps *ParsedSchema, scalars
 			Fields: inputFields,
 		})
 
-		maxLim := maxLimit
 		queryNS := graphql.NewObject(graphql.ObjectConfig{
 			Name: t.Name + "Query",
 			Fields: graphql.Fields{
 				"list": &graphql.Field{
 					Type: graphql.NewNonNull(graphql.NewList(graphql.NewNonNull(obj))),
-					Args: graphql.FieldConfigArgument{
-						"limit":  &graphql.ArgumentConfig{Type: intType},
-						"offset": &graphql.ArgumentConfig{Type: intType},
-					},
+					Args: pag.Arguments(intType),
 					Resolve: func(p graphql.ResolveParams) (any, error) {
-						limit := 100
-						if limit > maxLim {
-							limit = maxLim
-						}
-						if v, ok := p.Args["limit"].(int); ok {
-							if v > maxLim {
-								return nil, fmt.Errorf("limit %d exceeds maximum %d", v, maxLim)
-							}
-							limit = v
-						}
-						if limit < 0 {
-							limit = 0
-						}
-						offset := 0
-						if v, ok := p.Args["offset"].(int); ok {
-							offset = v
-						}
-						if offset < 0 {
-							offset = 0
+						limit, offset, err := pag.ApplySQL(p.Args)
+						if err != nil {
+							return nil, err
 						}
 						return listRecords(p.Context, db, tbl, colNames, limit, offset)
 					},
