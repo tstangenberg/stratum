@@ -83,11 +83,7 @@ func TestLoad_EnvVarNeverOverwritten(t *testing.T) {
 
 func TestLoad_NoFileIsNotAnError(t *testing.T) {
 	os.Unsetenv("STRATUM_CONFIG")
-	// Ensure no stratum.yaml in working dir
-	orig, _ := os.Getwd()
-	dir := t.TempDir()
-	os.Chdir(dir)
-	t.Cleanup(func() { os.Chdir(orig) })
+	t.Chdir(t.TempDir())
 
 	if err := Load(); err != nil {
 		t.Fatalf("Load() should not error when no config file exists: %v", err)
@@ -128,9 +124,7 @@ func TestLoad_FallbackToStratumYamlInWorkingDir(t *testing.T) {
 	os.Unsetenv("STRATUM_SERVER_ADDR")
 	t.Cleanup(func() { os.Unsetenv("STRATUM_SERVER_ADDR") })
 
-	orig, _ := os.Getwd()
-	os.Chdir(dir)
-	t.Cleanup(func() { os.Chdir(orig) })
+	t.Chdir(dir)
 
 	if err := Load(); err != nil {
 		t.Fatalf("Load() error: %v", err)
@@ -189,8 +183,9 @@ func TestLoad_DeepNesting(t *testing.T) {
 func TestLoad_StratumConfigPointsToNonexistentFile(t *testing.T) {
 	t.Setenv("STRATUM_CONFIG", "/nonexistent/path/stratum.yaml")
 
-	if err := Load(); err != nil {
-		t.Fatalf("Load() should not error for missing STRATUM_CONFIG target: %v", err)
+	err := Load()
+	if err == nil {
+		t.Fatal("Load() should return error when STRATUM_CONFIG points to missing file")
 	}
 }
 

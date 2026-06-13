@@ -31,9 +31,13 @@ import (
 // set are never overwritten.
 //
 // File resolution order: STRATUM_CONFIG env var → ./stratum.yaml → no file (not
-// an error).
+// an error). If STRATUM_CONFIG is set but the file does not exist, Load returns
+// an error.
 func Load() error {
-	path := resolveConfigPath()
+	path, err := resolveConfigPath()
+	if err != nil {
+		return err
+	}
 	if path == "" {
 		return nil
 	}
@@ -52,17 +56,17 @@ func Load() error {
 	return nil
 }
 
-func resolveConfigPath() string {
+func resolveConfigPath() (string, error) {
 	if p := os.Getenv("STRATUM_CONFIG"); p != "" {
-		if _, err := os.Stat(p); err == nil {
-			return p
+		if _, err := os.Stat(p); err != nil {
+			return "", fmt.Errorf("config: file %q not found: %w", p, err)
 		}
-		return ""
+		return p, nil
 	}
 	if _, err := os.Stat("stratum.yaml"); err == nil {
-		return "stratum.yaml"
+		return "stratum.yaml", nil
 	}
-	return ""
+	return "", nil
 }
 
 func expand(node map[string]any, prefix string) {
