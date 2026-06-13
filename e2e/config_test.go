@@ -40,20 +40,7 @@ func freePort(t *testing.T) int {
 	return port
 }
 
-func buildBinary(t *testing.T) string {
-	t.Helper()
-	bin := filepath.Join(t.TempDir(), "stratum")
-	cmd := exec.Command("go", "build", "-o", bin, "./cmd/stratum")
-	cmd.Dir = filepath.Join("..")
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("build binary: %v\n%s", err, out)
-	}
-	return bin
-}
-
 func TestConfigYamlBindsAddr(t *testing.T) {
-	bin := buildBinary(t)
 	port := freePort(t)
 	addr := fmt.Sprintf(":%d", port)
 
@@ -68,14 +55,13 @@ func TestConfigYamlBindsAddr(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, bin)
+	cmd := exec.CommandContext(ctx, stratumBin)
 	cmd.Env = append(os.Environ(), "STRATUM_CONFIG="+yamlPath)
 	if err := cmd.Start(); err != nil {
 		t.Fatalf("start binary: %v", err)
 	}
 	t.Cleanup(func() { _ = cmd.Process.Kill(); _ = cmd.Wait() })
 
-	// Poll until the server is ready or timeout.
 	target := fmt.Sprintf("http://127.0.0.1:%d/api/v1/health/live", port)
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
@@ -92,7 +78,6 @@ func TestConfigYamlBindsAddr(t *testing.T) {
 }
 
 func TestConfigEnvVarOverridesYaml(t *testing.T) {
-	bin := buildBinary(t)
 	yamlPort := freePort(t)
 	envPort := freePort(t)
 
@@ -109,7 +94,7 @@ func TestConfigEnvVarOverridesYaml(t *testing.T) {
 
 	// Override with env var — env var should win
 	envAddr := fmt.Sprintf(":%d", envPort)
-	cmd := exec.CommandContext(ctx, bin)
+	cmd := exec.CommandContext(ctx, stratumBin)
 	cmd.Env = append(os.Environ(),
 		"STRATUM_CONFIG="+yamlPath,
 		"STRATUM_SERVER_ADDR="+envAddr,
