@@ -18,12 +18,11 @@
 package main
 
 import (
-	"os"
 	"testing"
 )
 
 func TestResolveAddr_DefaultsTo8080(t *testing.T) {
-	os.Unsetenv("STRATUM_SERVER_ADDR")
+	t.Setenv("STRATUM_SERVER_ADDR", "")
 	got := resolveAddr()
 	if got != ":8080" {
 		t.Errorf("resolveAddr() = %q, want %q", got, ":8080")
@@ -31,8 +30,7 @@ func TestResolveAddr_DefaultsTo8080(t *testing.T) {
 }
 
 func TestResolveAddr_UsesEnvVar(t *testing.T) {
-	os.Setenv("STRATUM_SERVER_ADDR", ":9090")
-	defer os.Unsetenv("STRATUM_SERVER_ADDR")
+	t.Setenv("STRATUM_SERVER_ADDR", ":9090")
 	got := resolveAddr()
 	if got != ":9090" {
 		t.Errorf("resolveAddr() = %q, want %q", got, ":9090")
@@ -40,7 +38,7 @@ func TestResolveAddr_UsesEnvVar(t *testing.T) {
 }
 
 func TestResolveMaxListLimit_Default(t *testing.T) {
-	os.Unsetenv("STRATUM_SERVER_LIST_MAX_LIMIT")
+	t.Setenv("STRATUM_SERVER_LIST_MAX_LIMIT", "")
 	got := resolveMaxListLimit()
 	if got != 0 {
 		t.Errorf("resolveMaxListLimit() = %d, want 0", got)
