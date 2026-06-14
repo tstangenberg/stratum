@@ -23,7 +23,7 @@ The `list` query is generated for every type. `limit` and `offset` are provided 
 - [x] The hard maximum is read from `STRATUM_PLUGINS_PAGINATION_MAX_LIMIT` at startup via `pagination-simple` plugin (default: 1000)
 - [x] The default page size is read from `STRATUM_PLUGINS_PAGINATION_DEFAULT_LIMIT` at startup via `pagination-simple` plugin (default: 100)
 - [x] Empty table returns an empty array, not an error
-- [x] Returns records in a stable order (lexicographic by `id` — UUIDv4, not insertion order)
+- [x] Returns records in a stable order
 
 ## E2E Tests
 
