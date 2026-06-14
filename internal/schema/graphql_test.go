@@ -23,6 +23,9 @@ import (
 	"strings"
 	"testing"
 
+	gql "github.com/graphql-go/graphql"
+	"github.com/tstangenberg/stratum/internal/plugin"
+	"github.com/tstangenberg/stratum/internal/plugin/pagination/simple"
 	"github.com/tstangenberg/stratum/internal/plugin/scalar"
 	idscalar "github.com/tstangenberg/stratum/internal/plugin/scalar/id"
 	stringscalar "github.com/tstangenberg/stratum/internal/plugin/scalar/string"
@@ -50,8 +53,31 @@ func locationSchema() *schema.ParsedSchema {
 	}
 }
 
+type stubModifier struct{ argKey string }
+
+func (s stubModifier) Name() string { return "stub" }
+func (s stubModifier) Arguments(intType gql.Output) gql.FieldConfigArgument {
+	if s.argKey == "" {
+		return nil
+	}
+	return gql.FieldConfigArgument{s.argKey: &gql.ArgumentConfig{Type: intType}}
+}
+func (s stubModifier) ModifyQuery(q string, p []any, _ map[string]any) (string, []any, error) {
+	return q, p, nil
+}
+
+func TestBuildHandler_DuplicateModifierArg_ReturnsError(t *testing.T) {
+	_, err := schema.BuildHandler(nil, "test", locationSchema(), stringScalars(), []plugin.QueryModifier{
+		stubModifier{argKey: "limit"},
+		stubModifier{argKey: "limit"},
+	})
+	if err == nil {
+		t.Fatal("expected error for duplicate modifier argument")
+	}
+}
+
 func TestBuildHandler_Success(t *testing.T) {
-	h, err := schema.BuildHandler(nil, "test", locationSchema(), stringScalars())
+	h, err := schema.BuildHandler(nil, "test", locationSchema(), stringScalars(), []plugin.QueryModifier{simple.New()})
 	if err != nil {
 		t.Fatalf("BuildHandler: %v", err)
 	}
@@ -68,7 +94,7 @@ func TestBuildHandler_UnknownScalarInField(t *testing.T) {
 			}},
 		},
 	}
-	_, err := schema.BuildHandler(nil, "test", ps, map[string]scalar.Plugin{})
+	_, err := schema.BuildHandler(nil, "test", ps, map[string]scalar.Plugin{}, []plugin.QueryModifier{simple.New()})
 	if err == nil {
 		t.Fatal("expected error for unknown scalar in field")
 	}
@@ -83,14 +109,14 @@ func TestBuildHandler_SchemaConstructionError(t *testing.T) {
 			}},
 		},
 	}
-	_, err := schema.BuildHandler(nil, "test", ps, stringScalars())
+	_, err := schema.BuildHandler(nil, "test", ps, stringScalars(), []plugin.QueryModifier{simple.New()})
 	if err == nil {
 		t.Fatal("expected error when type name collides with root Query")
 	}
 }
 
 func TestGQLHandler_BadJSON(t *testing.T) {
-	h, err := schema.BuildHandler(nil, "test", locationSchema(), stringScalars())
+	h, err := schema.BuildHandler(nil, "test", locationSchema(), stringScalars(), []plugin.QueryModifier{simple.New()})
 	if err != nil {
 		t.Fatalf("BuildHandler: %v", err)
 	}

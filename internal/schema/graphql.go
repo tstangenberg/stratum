@@ -27,13 +27,18 @@ import (
 
 	"github.com/graphql-go/graphql"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/tstangenberg/stratum/internal/plugin"
 	"github.com/tstangenberg/stratum/internal/plugin/scalar"
 )
 
 // BuildHandler creates an HTTP handler that serves GraphQL for the given schema.
 // It builds a dynamic graphql-go schema with Query (list, get) and Mutation (create) per type.
 // Relation fields are resolved by loading the referenced record from the DB.
-func BuildHandler(db *pgxpool.Pool, schemaName string, ps *ParsedSchema, scalars map[string]scalar.Plugin) (http.Handler, error) {
+func BuildHandler(db *pgxpool.Pool, schemaName string, ps *ParsedSchema, scalars map[string]scalar.Plugin, modifiers []plugin.QueryModifier) (http.Handler, error) {
+	intType := graphql.Int
+	if s, ok := scalars["Int"]; ok {
+		intType = s.GraphQLType()
+	}
 	typeIndex := make(map[string]TypeDef, len(ps.Types))
 	for _, t := range ps.Types {
 		typeIndex[t.Name] = t
@@ -105,13 +110,27 @@ func BuildHandler(db *pgxpool.Pool, schemaName string, ps *ParsedSchema, scalars
 			Fields: inputFields,
 		})
 
+		listArgMap, err := listArgs(modifiers, intType)
+		if err != nil {
+			return nil, err
+		}
 		queryNS := graphql.NewObject(graphql.ObjectConfig{
 			Name: t.Name + "Query",
 			Fields: graphql.Fields{
 				"list": &graphql.Field{
 					Type: graphql.NewNonNull(graphql.NewList(graphql.NewNonNull(obj))),
+					Args: listArgMap,
 					Resolve: func(p graphql.ResolveParams) (any, error) {
-						return listRecords(p.Context, db, tbl, colNames)
+						query := fmt.Sprintf("SELECT %s FROM %s ORDER BY id", strings.Join(colNames, ", "), tbl)
+						var params []any
+						for _, mod := range modifiers {
+							var err error
+							query, params, err = mod.ModifyQuery(query, params, p.Args)
+							if err != nil {
+								return nil, err
+							}
+						}
+						return listRecords(p.Context, db, query, params, colNames, tbl)
 					},
 				},
 				"get": &graphql.Field{
@@ -233,6 +252,19 @@ func columnNames(t TypeDef) []string {
 	return cols
 }
 
+func listArgs(modifiers []plugin.QueryModifier, intType graphql.Output) (graphql.FieldConfigArgument, error) {
+	args := graphql.FieldConfigArgument{}
+	for _, mod := range modifiers {
+		for k, v := range mod.Arguments(intType) {
+			if _, exists := args[k]; exists {
+				return nil, fmt.Errorf("graphql: query modifier %q declares argument %q already registered by a previous modifier", mod.Name(), k)
+			}
+			args[k] = v
+		}
+	}
+	return args, nil
+}
+
 // scannable is the subset of pgx.Rows used by scanList.
 type scannable interface {
 	Close()
@@ -241,8 +273,8 @@ type scannable interface {
 	Err() error
 }
 
-func listRecords(ctx context.Context, db *pgxpool.Pool, tbl string, cols []string) ([]map[string]any, error) {
-	rows, err := db.Query(ctx, fmt.Sprintf("SELECT %s FROM %s", strings.Join(cols, ", "), tbl))
+func listRecords(ctx context.Context, db *pgxpool.Pool, query string, params []any, cols []string, tbl string) ([]map[string]any, error) {
+	rows, err := db.Query(ctx, query, params...)
 	if err != nil {
 		return nil, fmt.Errorf("list %s: %w", tbl, err)
 	}
@@ -251,7 +283,7 @@ func listRecords(ctx context.Context, db *pgxpool.Pool, tbl string, cols []strin
 
 func scanList(rows scannable, cols []string, tbl string) ([]map[string]any, error) {
 	defer rows.Close()
-	var result []map[string]any
+	result := []map[string]any{}
 	for rows.Next() {
 		vals := make([]any, len(cols))
 		ptrs := make([]any, len(cols))

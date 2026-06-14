@@ -31,8 +31,11 @@ import (
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/wait"
 
+	"github.com/tstangenberg/stratum/internal/plugin"
+	"github.com/tstangenberg/stratum/internal/plugin/pagination/simple"
 	"github.com/tstangenberg/stratum/internal/plugin/scalar"
 	idscalar "github.com/tstangenberg/stratum/internal/plugin/scalar/id"
+	intscalar "github.com/tstangenberg/stratum/internal/plugin/scalar/int"
 	stringscalar "github.com/tstangenberg/stratum/internal/plugin/scalar/string"
 	"github.com/tstangenberg/stratum/internal/schema"
 )
@@ -170,7 +173,7 @@ func TestGraphQLResolvers(t *testing.T) {
 	}
 
 	ps := &schema.ParsedSchema{Types: []schema.TypeDef{td}}
-	h, err := schema.BuildHandler(pool, "test", ps, scalars)
+	h, err := schema.BuildHandler(pool, "test", ps, scalars, []plugin.QueryModifier{simple.New()})
 	if err != nil {
 		t.Fatalf("BuildHandler: %v", err)
 	}
@@ -278,7 +281,7 @@ func TestGraphQLResolvers_NullableField(t *testing.T) {
 	}
 
 	ps := &schema.ParsedSchema{Types: []schema.TypeDef{td}}
-	h, err := schema.BuildHandler(pool, "test", ps, scalars)
+	h, err := schema.BuildHandler(pool, "test", ps, scalars, []plugin.QueryModifier{simple.New()})
 	if err != nil {
 		t.Fatalf("BuildHandler: %v", err)
 	}
@@ -393,7 +396,7 @@ func TestGraphQLResolvers_Relation(t *testing.T) {
 	}
 
 	ps := &schema.ParsedSchema{Types: []schema.TypeDef{kantonTD, ortTD}}
-	h, err := schema.BuildHandler(pool, "test", ps, scalars)
+	h, err := schema.BuildHandler(pool, "test", ps, scalars, []plugin.QueryModifier{simple.New()})
 	if err != nil {
 		t.Fatalf("BuildHandler: %v", err)
 	}
@@ -523,7 +526,7 @@ func TestGraphQLResolvers_NullableRelation(t *testing.T) {
 	}
 
 	ps := &schema.ParsedSchema{Types: []schema.TypeDef{parentTD, childTD}}
-	h, err := schema.BuildHandler(pool, "test", ps, scalars)
+	h, err := schema.BuildHandler(pool, "test", ps, scalars, []plugin.QueryModifier{simple.New()})
 	if err != nil {
 		t.Fatalf("BuildHandler: %v", err)
 	}
@@ -575,7 +578,7 @@ func TestGraphQLResolvers_ClosedPool(t *testing.T) {
 	}
 
 	ps := &schema.ParsedSchema{Types: []schema.TypeDef{td}}
-	h, err := schema.BuildHandler(pool, "test", ps, scalars)
+	h, err := schema.BuildHandler(pool, "test", ps, scalars, []plugin.QueryModifier{simple.New()})
 	if err != nil {
 		t.Fatalf("BuildHandler: %v", err)
 	}
@@ -596,4 +599,147 @@ func TestGraphQLResolvers_ClosedPool(t *testing.T) {
 
 	doQuery(`{"query":"{ location { list { id name } } }"}`)
 	doQuery(`{"query":"mutation { location { create(input: {name: \"x\"}) { id } } }"}`)
+}
+
+func TestGraphQLResolvers_ListPagination(t *testing.T) {
+	pool := startPool(t)
+	ctx := context.Background()
+
+	td := locationTypeDef()
+	scalars := map[string]scalar.Plugin{
+		"String": stringscalar.Plugin{},
+		"ID":     idscalar.Plugin{},
+		"Int":    intscalar.Plugin{},
+	}
+
+	if err := schema.CreateTable(ctx, pool, "test", td, scalars); err != nil {
+		t.Fatalf("CreateTable: %v", err)
+	}
+
+	t.Setenv("STRATUM_PLUGINS_PAGINATION_MAX_LIMIT", "5")
+	ps := &schema.ParsedSchema{Types: []schema.TypeDef{td}}
+	h, err := schema.BuildHandler(pool, "test", ps, scalars, []plugin.QueryModifier{simple.New()})
+	if err != nil {
+		t.Fatalf("BuildHandler: %v", err)
+	}
+
+	do := func(body string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodPost, "/graphql/test", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, req)
+		return w
+	}
+
+	// Insert 3 records
+	for _, name := range []string{"A", "B", "C"} {
+		w := do(`{"query":"mutation { location { create(input: {name: \"` + name + `\"}) { id } } }"}`)
+		if w.Code != http.StatusOK {
+			t.Fatalf("create %s: %d — %s", name, w.Code, w.Body.String())
+		}
+	}
+
+	type listResp struct {
+		Data struct {
+			Location struct {
+				List []struct {
+					ID   string `json:"id"`
+					Name string `json:"name"`
+				} `json:"list"`
+			} `json:"location"`
+		} `json:"data"`
+		Errors []struct{ Message string } `json:"errors"`
+	}
+
+	decodeList := func(w *httptest.ResponseRecorder) listResp {
+		t.Helper()
+		var r listResp
+		if err := json.NewDecoder(w.Body).Decode(&r); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		return r
+	}
+
+	t.Run("default_limit", func(t *testing.T) {
+		r := decodeList(do(`{"query":"{ location { list { id name } } }"}`))
+		if len(r.Errors) > 0 {
+			t.Fatalf("errors: %v", r.Errors)
+		}
+		if len(r.Data.Location.List) != 3 {
+			t.Errorf("expected 3, got %d", len(r.Data.Location.List))
+		}
+	})
+
+	t.Run("limit_2", func(t *testing.T) {
+		r := decodeList(do(`{"query":"{ location { list(limit: 2) { id name } } }"}`))
+		if len(r.Errors) > 0 {
+			t.Fatalf("errors: %v", r.Errors)
+		}
+		if len(r.Data.Location.List) != 2 {
+			t.Errorf("expected 2, got %d", len(r.Data.Location.List))
+		}
+	})
+
+	t.Run("limit_with_offset", func(t *testing.T) {
+		r := decodeList(do(`{"query":"{ location { list(limit: 2, offset: 1) { id name } } }"}`))
+		if len(r.Errors) > 0 {
+			t.Fatalf("errors: %v", r.Errors)
+		}
+		if len(r.Data.Location.List) != 2 {
+			t.Errorf("expected 2, got %d", len(r.Data.Location.List))
+		}
+	})
+
+	t.Run("offset_beyond_data", func(t *testing.T) {
+		r := decodeList(do(`{"query":"{ location { list(offset: 100) { id name } } }"}`))
+		if len(r.Errors) > 0 {
+			t.Fatalf("errors: %v", r.Errors)
+		}
+		if len(r.Data.Location.List) != 0 {
+			t.Errorf("expected 0, got %d", len(r.Data.Location.List))
+		}
+	})
+
+	t.Run("limit_exceeds_max", func(t *testing.T) {
+		r := decodeList(do(`{"query":"{ location { list(limit: 10) { id name } } }"}`))
+		if len(r.Errors) == 0 {
+			t.Fatal("expected error for limit exceeding max")
+		}
+		if !strings.Contains(r.Errors[0].Message, "exceeds maximum") {
+			t.Errorf("error = %q, want mention of exceeds maximum", r.Errors[0].Message)
+		}
+	})
+
+	t.Run("negative_limit_clamped_to_zero", func(t *testing.T) {
+		r := decodeList(do(`{"query":"{ location { list(limit: -1) { id name } } }"}`))
+		if len(r.Errors) > 0 {
+			t.Fatalf("errors: %v", r.Errors)
+		}
+		if len(r.Data.Location.List) != 0 {
+			t.Errorf("expected 0, got %d", len(r.Data.Location.List))
+		}
+	})
+
+	t.Run("negative_offset_clamped_to_zero", func(t *testing.T) {
+		r := decodeList(do(`{"query":"{ location { list(offset: -5) { id name } } }"}`))
+		if len(r.Errors) > 0 {
+			t.Fatalf("errors: %v", r.Errors)
+		}
+		if len(r.Data.Location.List) != 3 {
+			t.Errorf("expected 3, got %d", len(r.Data.Location.List))
+		}
+	})
+
+	t.Run("stable_order", func(t *testing.T) {
+		r1 := decodeList(do(`{"query":"{ location { list { id } } }"}`))
+		r2 := decodeList(do(`{"query":"{ location { list { id } } }"}`))
+		if len(r1.Data.Location.List) != len(r2.Data.Location.List) {
+			t.Fatalf("lengths differ")
+		}
+		for i := range r1.Data.Location.List {
+			if r1.Data.Location.List[i].ID != r2.Data.Location.List[i].ID {
+				t.Fatalf("order differs at %d", i)
+			}
+		}
+	})
 }
