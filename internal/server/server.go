@@ -29,7 +29,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/tstangenberg/stratum/internal/api"
 	"github.com/tstangenberg/stratum/internal/plugin"
-	"github.com/tstangenberg/stratum/internal/plugin/pagination"
 	simplepagination "github.com/tstangenberg/stratum/internal/plugin/pagination/simple"
 	"github.com/tstangenberg/stratum/internal/plugin/scalar"
 	booleanscalar "github.com/tstangenberg/stratum/internal/plugin/scalar/boolean"
@@ -44,19 +43,19 @@ var errNotImplemented = errors.New("not implemented")
 
 // StratumServer is the main server struct.
 type StratumServer struct {
-	healthPlugins []plugin.HealthPlugin
-	db            *pgxpool.Pool
-	schemas       *schema.Store
-	scalars       map[string]scalar.Plugin
-	pagination    pagination.Plugin
+	healthPlugins  []plugin.HealthPlugin
+	db             *pgxpool.Pool
+	schemas        *schema.Store
+	scalars        map[string]scalar.Plugin
+	queryModifiers []plugin.QueryModifier
 }
 
 // NewStratumServer creates a new StratumServer with the given health plugins.
 func NewStratumServer(plugins ...plugin.HealthPlugin) *StratumServer {
 	return &StratumServer{
-		healthPlugins: plugins,
-		schemas:       schema.NewStore(),
-		pagination:    simplepagination.New(),
+		healthPlugins:  plugins,
+		schemas:        schema.NewStore(),
+		queryModifiers: []plugin.QueryModifier{simplepagination.New()},
 		scalars: map[string]scalar.Plugin{
 			"String":  stringscalar.Plugin{},
 			"ID":      idscalar.Plugin{},
@@ -73,9 +72,9 @@ func (s *StratumServer) WithDB(db *pgxpool.Pool) *StratumServer {
 	return s
 }
 
-// WithPagination sets the PaginationPlugin and returns the server for chaining.
-func (s *StratumServer) WithPagination(p pagination.Plugin) *StratumServer {
-	s.pagination = p
+// WithQueryModifiers replaces the query modifier pipeline and returns the server for chaining.
+func (s *StratumServer) WithQueryModifiers(modifiers ...plugin.QueryModifier) *StratumServer {
+	s.queryModifiers = modifiers
 	return s
 }
 
@@ -183,7 +182,7 @@ func (s *StratumServer) UpsertSchema(ctx context.Context, req api.UpsertSchemaRe
 		}
 	}
 
-	h, err := schema.BuildHandler(s.db, name, ps, s.scalars, s.pagination)
+	h, err := schema.BuildHandler(s.db, name, ps, s.scalars, s.queryModifiers)
 	if err != nil {
 		return nil, fmt.Errorf("upsert schema %q: build handler: %w", name, err)
 	}

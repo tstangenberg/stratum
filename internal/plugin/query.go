@@ -17,10 +17,21 @@
 
 package plugin
 
-// QueryModifier augments a SQL query before execution.
-// Implementations receive the current query and its parameters, append their
-// own clauses and parameters, and return the modified versions.
-// args carries the GraphQL resolve arguments for the current request.
+import "github.com/graphql-go/graphql"
+
+// QueryModifier augments a SQL list query before execution.
+// Implementations may declare GraphQL arguments via Arguments (return nil if none)
+// and append clauses to the SQL query via ModifyQuery.
 type QueryModifier interface {
+	// Name returns the plugin identifier.
+	Name() string
+	// Arguments returns GraphQL argument configs to add to each list field.
+	// intType is the graphql-go Int type sourced from the scalar registry.
+	// Return nil if this modifier requires no client-supplied arguments.
+	Arguments(intType graphql.Output) graphql.FieldConfigArgument
+	// ModifyQuery appends clauses to query, extends params, and returns the
+	// modified versions, or an error if args are invalid.
+	// params contains any existing query parameters; ModifyQuery appends its own
+	// starting at the correct 1-based index.
 	ModifyQuery(query string, params []any, args map[string]any) (string, []any, error)
 }

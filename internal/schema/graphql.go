@@ -27,14 +27,14 @@ import (
 
 	"github.com/graphql-go/graphql"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/tstangenberg/stratum/internal/plugin/pagination"
+	"github.com/tstangenberg/stratum/internal/plugin"
 	"github.com/tstangenberg/stratum/internal/plugin/scalar"
 )
 
 // BuildHandler creates an HTTP handler that serves GraphQL for the given schema.
 // It builds a dynamic graphql-go schema with Query (list, get) and Mutation (create) per type.
 // Relation fields are resolved by loading the referenced record from the DB.
-func BuildHandler(db *pgxpool.Pool, schemaName string, ps *ParsedSchema, scalars map[string]scalar.Plugin, pag pagination.Plugin) (http.Handler, error) {
+func BuildHandler(db *pgxpool.Pool, schemaName string, ps *ParsedSchema, scalars map[string]scalar.Plugin, modifiers []plugin.QueryModifier) (http.Handler, error) {
 	intType := graphql.Int
 	if s, ok := scalars["Int"]; ok {
 		intType = s.GraphQLType()
@@ -115,12 +115,16 @@ func BuildHandler(db *pgxpool.Pool, schemaName string, ps *ParsedSchema, scalars
 			Fields: graphql.Fields{
 				"list": &graphql.Field{
 					Type: graphql.NewNonNull(graphql.NewList(graphql.NewNonNull(obj))),
-					Args: pag.Arguments(intType),
+					Args: listArgs(modifiers, intType),
 					Resolve: func(p graphql.ResolveParams) (any, error) {
-						base := fmt.Sprintf("SELECT %s FROM %s ORDER BY id", strings.Join(colNames, ", "), tbl)
-						query, params, err := pag.ModifyQuery(base, nil, p.Args)
-						if err != nil {
-							return nil, err
+						query := fmt.Sprintf("SELECT %s FROM %s ORDER BY id", strings.Join(colNames, ", "), tbl)
+						var params []any
+						for _, mod := range modifiers {
+							var err error
+							query, params, err = mod.ModifyQuery(query, params, p.Args)
+							if err != nil {
+								return nil, err
+							}
 						}
 						return listRecords(p.Context, db, query, params, colNames, tbl)
 					},
@@ -242,6 +246,16 @@ func columnNames(t TypeDef) []string {
 		}
 	}
 	return cols
+}
+
+func listArgs(modifiers []plugin.QueryModifier, intType graphql.Output) graphql.FieldConfigArgument {
+	args := graphql.FieldConfigArgument{}
+	for _, mod := range modifiers {
+		for k, v := range mod.Arguments(intType) {
+			args[k] = v
+		}
+	}
+	return args
 }
 
 // scannable is the subset of pgx.Rows used by scanList.

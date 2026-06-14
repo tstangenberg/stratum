@@ -23,6 +23,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/tstangenberg/stratum/internal/plugin"
 	"github.com/tstangenberg/stratum/internal/plugin/pagination/simple"
 	"github.com/tstangenberg/stratum/internal/plugin/scalar"
 	idscalar "github.com/tstangenberg/stratum/internal/plugin/scalar/id"
@@ -52,7 +53,7 @@ func locationSchema() *schema.ParsedSchema {
 }
 
 func TestBuildHandler_Success(t *testing.T) {
-	h, err := schema.BuildHandler(nil, "test", locationSchema(), stringScalars(), simple.New())
+	h, err := schema.BuildHandler(nil, "test", locationSchema(), stringScalars(), []plugin.QueryModifier{simple.New()})
 	if err != nil {
 		t.Fatalf("BuildHandler: %v", err)
 	}
@@ -69,7 +70,7 @@ func TestBuildHandler_UnknownScalarInField(t *testing.T) {
 			}},
 		},
 	}
-	_, err := schema.BuildHandler(nil, "test", ps, map[string]scalar.Plugin{}, simple.New())
+	_, err := schema.BuildHandler(nil, "test", ps, map[string]scalar.Plugin{}, []plugin.QueryModifier{simple.New()})
 	if err == nil {
 		t.Fatal("expected error for unknown scalar in field")
 	}
@@ -84,14 +85,14 @@ func TestBuildHandler_SchemaConstructionError(t *testing.T) {
 			}},
 		},
 	}
-	_, err := schema.BuildHandler(nil, "test", ps, stringScalars(), simple.New())
+	_, err := schema.BuildHandler(nil, "test", ps, stringScalars(), []plugin.QueryModifier{simple.New()})
 	if err == nil {
 		t.Fatal("expected error when type name collides with root Query")
 	}
 }
 
 func TestGQLHandler_BadJSON(t *testing.T) {
-	h, err := schema.BuildHandler(nil, "test", locationSchema(), stringScalars(), simple.New())
+	h, err := schema.BuildHandler(nil, "test", locationSchema(), stringScalars(), []plugin.QueryModifier{simple.New()})
 	if err != nil {
 		t.Fatalf("BuildHandler: %v", err)
 	}

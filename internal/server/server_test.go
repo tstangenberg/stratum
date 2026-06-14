@@ -327,13 +327,13 @@ func TestReadiness_WithDetails(t *testing.T) {
 	}
 }
 
-func TestWithPagination(t *testing.T) {
+func TestWithQueryModifiers(t *testing.T) {
 	p := simplepagination.New()
-	srv := NewStratumServer().WithPagination(p)
-	if srv.pagination == nil {
-		t.Fatal("expected pagination plugin to be set")
+	srv := NewStratumServer().WithQueryModifiers(p)
+	if len(srv.queryModifiers) != 1 {
+		t.Fatalf("len(queryModifiers) = %d, want 1", len(srv.queryModifiers))
 	}
-	if srv.pagination.Name() != "pagination" {
-		t.Errorf("pagination.Name() = %q, want %q", srv.pagination.Name(), "pagination")
+	if srv.queryModifiers[0].Name() != "pagination" {
+		t.Errorf("queryModifiers[0].Name() = %q, want %q", srv.queryModifiers[0].Name(), "pagination")
 	}
 }
