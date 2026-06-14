@@ -72,7 +72,8 @@ func (s *StratumServer) WithDB(db *pgxpool.Pool) *StratumServer {
 	return s
 }
 
-// WithQueryModifiers replaces the query modifier pipeline and returns the server for chaining.
+// WithQueryModifiers replaces the entire query modifier pipeline and returns the server for chaining.
+// The default pipeline contains pagination-simple; callers must include it explicitly if still needed.
 func (s *StratumServer) WithQueryModifiers(modifiers ...plugin.QueryModifier) *StratumServer {
 	s.queryModifiers = modifiers
 	return s
