@@ -15,20 +15,12 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-package pagination
+package plugin
 
-import (
-	"github.com/graphql-go/graphql"
-	"github.com/tstangenberg/stratum/internal/plugin"
-)
-
-// Plugin adds pagination arguments to list queries and modifies the SQL query
-// to apply pagination clauses before execution.
-type Plugin interface {
-	// Name returns the plugin identifier.
-	Name() string
-	// Arguments returns the GraphQL argument config to add to each list field.
-	// intType is the graphql-go output type for Int (sourced from the scalar plugin registry).
-	Arguments(intType graphql.Output) graphql.FieldConfigArgument
-	plugin.QueryModifier
+// QueryModifier augments a SQL query before execution.
+// Implementations receive the current query and its parameters, append their
+// own clauses and parameters, and return the modified versions.
+// args carries the GraphQL resolve arguments for the current request.
+type QueryModifier interface {
+	ModifyQuery(query string, params []any, args map[string]any) (string, []any, error)
 }

@@ -66,8 +66,8 @@ func (p *Plugin) Arguments(intType graphql.Output) graphql.FieldConfigArgument {
 	}
 }
 
-// ApplySQL appends LIMIT/OFFSET clauses to query using parameterised placeholders.
-func (p *Plugin) ApplySQL(query string, params []any, args map[string]any) (string, []any, error) {
+// ModifyQuery appends LIMIT/OFFSET clauses to query using parameterised placeholders.
+func (p *Plugin) ModifyQuery(query string, params []any, args map[string]any) (string, []any, error) {
 	limit := p.defaultLimit
 	if limit > p.maxLimit {
 		limit = p.maxLimit

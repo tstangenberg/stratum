@@ -118,7 +118,7 @@ func BuildHandler(db *pgxpool.Pool, schemaName string, ps *ParsedSchema, scalars
 					Args: pag.Arguments(intType),
 					Resolve: func(p graphql.ResolveParams) (any, error) {
 						base := fmt.Sprintf("SELECT %s FROM %s ORDER BY id", strings.Join(colNames, ", "), tbl)
-						query, params, err := pag.ApplySQL(base, nil, p.Args)
+						query, params, err := pag.ModifyQuery(base, nil, p.Args)
 						if err != nil {
 							return nil, err
 						}

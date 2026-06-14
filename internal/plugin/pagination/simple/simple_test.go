@@ -47,7 +47,7 @@ func TestArguments_ContainsLimitAndOffset(t *testing.T) {
 
 func TestApplySQL_NoArgs_UsesDefault(t *testing.T) {
 	p := simple.New()
-	q, params, err := p.ApplySQL(baseQuery, nil, map[string]any{})
+	q, params, err := p.ModifyQuery(baseQuery, nil, map[string]any{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -67,7 +67,7 @@ func TestApplySQL_NoArgs_UsesDefault(t *testing.T) {
 
 func TestApplySQL_WithLimit(t *testing.T) {
 	p := simple.New()
-	_, params, err := p.ApplySQL(baseQuery, nil, map[string]any{"limit": 42})
+	_, params, err := p.ModifyQuery(baseQuery, nil, map[string]any{"limit": 42})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -81,7 +81,7 @@ func TestApplySQL_WithLimit(t *testing.T) {
 
 func TestApplySQL_WithLimitAndOffset(t *testing.T) {
 	p := simple.New()
-	_, params, err := p.ApplySQL(baseQuery, nil, map[string]any{"limit": 10, "offset": 20})
+	_, params, err := p.ModifyQuery(baseQuery, nil, map[string]any{"limit": 10, "offset": 20})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -95,7 +95,7 @@ func TestApplySQL_WithLimitAndOffset(t *testing.T) {
 
 func TestApplySQL_LimitExceedsMax_ReturnsError(t *testing.T) {
 	p := simple.New()
-	_, _, err := p.ApplySQL(baseQuery, nil, map[string]any{"limit": 1001})
+	_, _, err := p.ModifyQuery(baseQuery, nil, map[string]any{"limit": 1001})
 	if err == nil {
 		t.Fatal("expected error for limit exceeding max")
 	}
@@ -103,7 +103,7 @@ func TestApplySQL_LimitExceedsMax_ReturnsError(t *testing.T) {
 
 func TestApplySQL_NegativeLimit_ClampedToZero(t *testing.T) {
 	p := simple.New()
-	_, params, err := p.ApplySQL(baseQuery, nil, map[string]any{"limit": -5})
+	_, params, err := p.ModifyQuery(baseQuery, nil, map[string]any{"limit": -5})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -114,7 +114,7 @@ func TestApplySQL_NegativeLimit_ClampedToZero(t *testing.T) {
 
 func TestApplySQL_NegativeOffset_ClampedToZero(t *testing.T) {
 	p := simple.New()
-	_, params, err := p.ApplySQL(baseQuery, nil, map[string]any{"limit": 10, "offset": -3})
+	_, params, err := p.ModifyQuery(baseQuery, nil, map[string]any{"limit": 10, "offset": -3})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -125,7 +125,7 @@ func TestApplySQL_NegativeOffset_ClampedToZero(t *testing.T) {
 
 func TestApplySQL_ExistingParams_CorrectIndex(t *testing.T) {
 	p := simple.New()
-	q, params, err := p.ApplySQL("SELECT id FROM t WHERE x = $1 ORDER BY id", []any{"foo"}, map[string]any{})
+	q, params, err := p.ModifyQuery("SELECT id FROM t WHERE x = $1 ORDER BY id", []any{"foo"}, map[string]any{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -143,7 +143,7 @@ func TestApplySQL_ExistingParams_CorrectIndex(t *testing.T) {
 func TestNew_ReadsDefaultLimitFromEnv(t *testing.T) {
 	t.Setenv("STRATUM_PLUGINS_PAGINATION_DEFAULT_LIMIT", "50")
 	p := simple.New()
-	_, params, err := p.ApplySQL(baseQuery, nil, map[string]any{})
+	_, params, err := p.ModifyQuery(baseQuery, nil, map[string]any{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -156,7 +156,7 @@ func TestApplySQL_DefaultLimitExceedsMax_ClampedToMax(t *testing.T) {
 	t.Setenv("STRATUM_PLUGINS_PAGINATION_DEFAULT_LIMIT", "200")
 	t.Setenv("STRATUM_PLUGINS_PAGINATION_MAX_LIMIT", "100")
 	p := simple.New()
-	_, params, err := p.ApplySQL(baseQuery, nil, map[string]any{})
+	_, params, err := p.ModifyQuery(baseQuery, nil, map[string]any{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -168,7 +168,7 @@ func TestApplySQL_DefaultLimitExceedsMax_ClampedToMax(t *testing.T) {
 func TestNew_ReadsMaxLimitFromEnv(t *testing.T) {
 	t.Setenv("STRATUM_PLUGINS_PAGINATION_MAX_LIMIT", "500")
 	p := simple.New()
-	_, _, err := p.ApplySQL(baseQuery, nil, map[string]any{"limit": 501})
+	_, _, err := p.ModifyQuery(baseQuery, nil, map[string]any{"limit": 501})
 	if err == nil {
 		t.Fatal("expected error for limit exceeding custom max")
 	}
