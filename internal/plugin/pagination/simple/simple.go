@@ -66,23 +66,25 @@ func (p *Plugin) Arguments(intType graphql.Output) graphql.FieldConfigArgument {
 	}
 }
 
-// ApplySQL resolves limit and offset from GraphQL args, enforcing defaults and bounds.
-func (p *Plugin) ApplySQL(args map[string]any) (limit, offset int, err error) {
-	limit = p.defaultLimit
+// ApplySQL appends LIMIT/OFFSET clauses to query using parameterised placeholders.
+func (p *Plugin) ApplySQL(query string, params []any, args map[string]any) (string, []any, error) {
+	limit := p.defaultLimit
 	if limit > p.maxLimit {
 		limit = p.maxLimit
 	}
 	if v, ok := args["limit"].(int); ok {
 		if v > p.maxLimit {
-			return 0, 0, fmt.Errorf("limit %d exceeds maximum %d", v, p.maxLimit)
+			return "", nil, fmt.Errorf("limit %d exceeds maximum %d", v, p.maxLimit)
 		}
 		if v < 0 {
 			v = 0
 		}
 		limit = v
 	}
+	offset := 0
 	if v, ok := args["offset"].(int); ok && v > 0 {
 		offset = v
 	}
-	return limit, offset, nil
+	n := len(params)
+	return fmt.Sprintf("%s LIMIT $%d OFFSET $%d", query, n+1, n+2), append(params, limit, offset), nil
 }

@@ -117,11 +117,12 @@ func BuildHandler(db *pgxpool.Pool, schemaName string, ps *ParsedSchema, scalars
 					Type: graphql.NewNonNull(graphql.NewList(graphql.NewNonNull(obj))),
 					Args: pag.Arguments(intType),
 					Resolve: func(p graphql.ResolveParams) (any, error) {
-						limit, offset, err := pag.ApplySQL(p.Args)
+						base := fmt.Sprintf("SELECT %s FROM %s ORDER BY id", strings.Join(colNames, ", "), tbl)
+						query, params, err := pag.ApplySQL(base, nil, p.Args)
 						if err != nil {
 							return nil, err
 						}
-						return listRecords(p.Context, db, tbl, colNames, limit, offset)
+						return listRecords(p.Context, db, query, params, colNames, tbl)
 					},
 				},
 				"get": &graphql.Field{
@@ -251,10 +252,8 @@ type scannable interface {
 	Err() error
 }
 
-func listRecords(ctx context.Context, db *pgxpool.Pool, tbl string, cols []string, limit, offset int) ([]map[string]any, error) {
-	q := fmt.Sprintf("SELECT %s FROM %s ORDER BY id LIMIT %d OFFSET %d",
-		strings.Join(cols, ", "), tbl, limit, offset)
-	rows, err := db.Query(ctx, q)
+func listRecords(ctx context.Context, db *pgxpool.Pool, query string, params []any, cols []string, tbl string) ([]map[string]any, error) {
+	rows, err := db.Query(ctx, query, params...)
 	if err != nil {
 		return nil, fmt.Errorf("list %s: %w", tbl, err)
 	}

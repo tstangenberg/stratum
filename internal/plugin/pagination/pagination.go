@@ -26,7 +26,9 @@ type Plugin interface {
 	// Arguments returns the GraphQL argument config to add to each list field.
 	// intType is the graphql-go output type for Int (sourced from the scalar plugin registry).
 	Arguments(intType graphql.Output) graphql.FieldConfigArgument
-	// ApplySQL resolves the pagination args from a GraphQL resolve call and returns
-	// the limit and offset to use in the SQL query, or an error if args are invalid.
-	ApplySQL(args map[string]any) (limit, offset int, err error)
+	// ApplySQL appends pagination clauses to query, extends params, and returns the
+	// modified query and params, or an error if args are invalid.
+	// params contains any existing query parameters; ApplySQL appends its own starting
+	// at the correct 1-based index.
+	ApplySQL(query string, params []any, args map[string]any) (string, []any, error)
 }
