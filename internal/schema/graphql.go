@@ -110,12 +110,16 @@ func BuildHandler(db *pgxpool.Pool, schemaName string, ps *ParsedSchema, scalars
 			Fields: inputFields,
 		})
 
+		listArgMap, err := listArgs(modifiers, intType)
+		if err != nil {
+			return nil, err
+		}
 		queryNS := graphql.NewObject(graphql.ObjectConfig{
 			Name: t.Name + "Query",
 			Fields: graphql.Fields{
 				"list": &graphql.Field{
 					Type: graphql.NewNonNull(graphql.NewList(graphql.NewNonNull(obj))),
-					Args: listArgs(modifiers, intType),
+					Args: listArgMap,
 					Resolve: func(p graphql.ResolveParams) (any, error) {
 						query := fmt.Sprintf("SELECT %s FROM %s ORDER BY id", strings.Join(colNames, ", "), tbl)
 						var params []any
@@ -248,14 +252,17 @@ func columnNames(t TypeDef) []string {
 	return cols
 }
 
-func listArgs(modifiers []plugin.QueryModifier, intType graphql.Output) graphql.FieldConfigArgument {
+func listArgs(modifiers []plugin.QueryModifier, intType graphql.Output) (graphql.FieldConfigArgument, error) {
 	args := graphql.FieldConfigArgument{}
 	for _, mod := range modifiers {
 		for k, v := range mod.Arguments(intType) {
+			if _, exists := args[k]; exists {
+				return nil, fmt.Errorf("graphql: query modifier %q declares argument %q already registered by a previous modifier", mod.Name(), k)
+			}
 			args[k] = v
 		}
 	}
-	return args
+	return args, nil
 }
 
 // scannable is the subset of pgx.Rows used by scanList.

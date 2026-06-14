@@ -19,6 +19,7 @@ package simple
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"strconv"
 
@@ -46,11 +47,15 @@ func New() *Plugin {
 	if s := os.Getenv("STRATUM_PLUGINS_PAGINATION_DEFAULT_LIMIT"); s != "" {
 		if n, err := strconv.Atoi(s); err == nil && n > 0 {
 			p.defaultLimit = n
+		} else {
+			log.Printf("pagination-simple: STRATUM_PLUGINS_PAGINATION_DEFAULT_LIMIT=%q is invalid, using default %d", s, defaultLimit)
 		}
 	}
 	if s := os.Getenv("STRATUM_PLUGINS_PAGINATION_MAX_LIMIT"); s != "" {
 		if n, err := strconv.Atoi(s); err == nil && n > 0 {
 			p.maxLimit = n
+		} else {
+			log.Printf("pagination-simple: STRATUM_PLUGINS_PAGINATION_MAX_LIMIT=%q is invalid, using default %d", s, defaultMax)
 		}
 	}
 	return p

@@ -140,6 +140,27 @@ func TestApplySQL_ExistingParams_CorrectIndex(t *testing.T) {
 	}
 }
 
+func TestNew_InvalidDefaultLimitEnv_UsesDefault(t *testing.T) {
+	t.Setenv("STRATUM_PLUGINS_PAGINATION_DEFAULT_LIMIT", "abc")
+	p := simple.New()
+	_, params, err := p.ModifyQuery(baseQuery, nil, map[string]any{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if params[0] != 100 {
+		t.Errorf("params[0] = %v, want 100 (default)", params[0])
+	}
+}
+
+func TestNew_InvalidMaxLimitEnv_UsesDefault(t *testing.T) {
+	t.Setenv("STRATUM_PLUGINS_PAGINATION_MAX_LIMIT", "abc")
+	p := simple.New()
+	_, _, err := p.ModifyQuery(baseQuery, nil, map[string]any{"limit": 1001})
+	if err == nil {
+		t.Fatal("expected error for limit exceeding default max")
+	}
+}
+
 func TestNew_ReadsDefaultLimitFromEnv(t *testing.T) {
 	t.Setenv("STRATUM_PLUGINS_PAGINATION_DEFAULT_LIMIT", "50")
 	p := simple.New()

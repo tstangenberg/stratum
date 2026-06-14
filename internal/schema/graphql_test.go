@@ -23,6 +23,7 @@ import (
 	"strings"
 	"testing"
 
+	gql "github.com/graphql-go/graphql"
 	"github.com/tstangenberg/stratum/internal/plugin"
 	"github.com/tstangenberg/stratum/internal/plugin/pagination/simple"
 	"github.com/tstangenberg/stratum/internal/plugin/scalar"
@@ -49,6 +50,29 @@ func locationSchema() *schema.ParsedSchema {
 				},
 			},
 		},
+	}
+}
+
+type stubModifier struct{ argKey string }
+
+func (s stubModifier) Name() string { return "stub" }
+func (s stubModifier) Arguments(intType gql.Output) gql.FieldConfigArgument {
+	if s.argKey == "" {
+		return nil
+	}
+	return gql.FieldConfigArgument{s.argKey: &gql.ArgumentConfig{Type: intType}}
+}
+func (s stubModifier) ModifyQuery(q string, p []any, _ map[string]any) (string, []any, error) {
+	return q, p, nil
+}
+
+func TestBuildHandler_DuplicateModifierArg_ReturnsError(t *testing.T) {
+	_, err := schema.BuildHandler(nil, "test", locationSchema(), stringScalars(), []plugin.QueryModifier{
+		stubModifier{argKey: "limit"},
+		stubModifier{argKey: "limit"},
+	})
+	if err == nil {
+		t.Fatal("expected error for duplicate modifier argument")
 	}
 }
 
