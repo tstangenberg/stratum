@@ -24,6 +24,7 @@ import (
 	"testing"
 
 	"github.com/graphql-go/graphql"
+	"github.com/jackc/pgx/v5"
 	"github.com/tstangenberg/stratum/internal/plugin/scalar"
 	idscalar "github.com/tstangenberg/stratum/internal/plugin/scalar/id"
 	stringscalar "github.com/tstangenberg/stratum/internal/plugin/scalar/string"
@@ -112,6 +113,35 @@ func (r *stubRows) Close()              { r.closed = true }
 func (r *stubRows) Err() error          { return nil }
 func (r *stubRows) Next() bool          { r.called++; return r.called <= r.nextN }
 func (r *stubRows) Scan(_ ...any) error { return r.scanErr }
+
+type stubRow struct {
+	scanErr error
+}
+
+func (r *stubRow) Scan(_ ...any) error { return r.scanErr }
+
+func TestScanGet_NoRows_ReturnsNil(t *testing.T) {
+	row := &stubRow{scanErr: pgx.ErrNoRows}
+	rec, err := scanGet(row, []string{"id", "name"}, "test_t", "missing-id")
+	if err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+	if rec != nil {
+		t.Fatalf("expected nil record, got %v", rec)
+	}
+}
+
+func TestScanGet_ScanError(t *testing.T) {
+	scanErr := errors.New("broken scan")
+	row := &stubRow{scanErr: scanErr}
+	_, err := scanGet(row, []string{"id", "name"}, "test_t", "some-id")
+	if err == nil {
+		t.Fatal("expected error from scanGet")
+	}
+	if !strings.Contains(err.Error(), "scan") || !strings.Contains(err.Error(), "some-id") {
+		t.Errorf("error = %q, want it to mention scan and id", err)
+	}
+}
 
 func TestCamelToSnake(t *testing.T) {
 	tests := []struct {

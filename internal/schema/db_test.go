@@ -247,19 +247,27 @@ func TestGraphQLResolvers(t *testing.T) {
 		t.Fatalf("get: expected 200, got %d — %s", getW.Code, getW.Body.String())
 	}
 
-	// get non-existent record (covers getRecord error path)
-	getErrW := do(`{"query":"{ location { get(id: \"00000000-0000-0000-0000-000000000000\") { id name } } }"}`)
-	if getErrW.Code != http.StatusOK {
-		t.Fatalf("get-nonexistent: expected 200, got %d — %s", getErrW.Code, getErrW.Body.String())
+	// get non-existent record → returns null, no errors
+	getNullW := do(`{"query":"{ location { get(id: \"00000000-0000-0000-0000-000000000000\") { id name } } }"}`)
+	if getNullW.Code != http.StatusOK {
+		t.Fatalf("get-nonexistent: expected 200, got %d — %s", getNullW.Code, getNullW.Body.String())
 	}
-	var getErrResult struct {
+	var getNullResult struct {
+		Data   map[string]any             `json:"data"`
 		Errors []struct{ Message string } `json:"errors"`
 	}
-	if err := json.NewDecoder(getErrW.Body).Decode(&getErrResult); err != nil {
+	if err := json.NewDecoder(getNullW.Body).Decode(&getNullResult); err != nil {
 		t.Fatalf("get-nonexistent decode: %v", err)
 	}
-	if len(getErrResult.Errors) == 0 {
-		t.Error("get-nonexistent: expected GraphQL errors for missing record")
+	if len(getNullResult.Errors) > 0 {
+		t.Errorf("get-nonexistent: expected no errors, got %v", getNullResult.Errors)
+	}
+	locNS, ok := getNullResult.Data["location"].(map[string]any)
+	if !ok {
+		t.Fatal("get-nonexistent: expected location namespace in data")
+	}
+	if locNS["get"] != nil {
+		t.Errorf("get-nonexistent: expected null, got %v", locNS["get"])
 	}
 }
 

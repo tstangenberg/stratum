@@ -1,7 +1,7 @@
 ---
 id: US-008
 tags: [data, query]
-status: ready
+status: done
 ---
 
 # US-0008: Get a single record by ID
@@ -16,9 +16,9 @@ The `get` query is generated for every type. It performs a primary key lookup â€
 
 ## Acceptance Criteria
 
-- [ ] `query { <type> { get(id: "...") { ... } } }` returns the record with the given ID
-- [ ] Returns `null` for an unknown ID (not an error)
-- [ ] Returns all requested scalar fields correctly typed
+- [x] `query { <type> { get(id: "...") { ... } } }` returns the record with the given ID
+- [x] Returns `null` for an unknown ID (not an error)
+- [x] Returns all requested scalar fields correctly typed
 
 ## E2E Tests
 

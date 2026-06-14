@@ -21,11 +21,13 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 
 	"github.com/graphql-go/graphql"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/tstangenberg/stratum/internal/plugin"
 	"github.com/tstangenberg/stratum/internal/plugin/scalar"
@@ -139,7 +141,11 @@ func BuildHandler(db *pgxpool.Pool, schemaName string, ps *ParsedSchema, scalars
 						"id": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.ID)},
 					},
 					Resolve: func(p graphql.ResolveParams) (any, error) {
-						return getRecord(p.Context, db, tbl, colNames, p.Args["id"].(string))
+						rec, err := getRecord(p.Context, db, tbl, colNames, p.Args["id"].(string))
+						if rec == nil {
+							return nil, err
+						}
+						return rec, err
 					},
 				},
 			},
@@ -302,24 +308,36 @@ func scanList(rows scannable, cols []string, tbl string) ([]map[string]any, erro
 	return result, rows.Err()
 }
 
+// rowScanner is the subset of pgx.Row used by scanGet.
+type rowScanner interface {
+	Scan(dest ...any) error
+}
+
 func getRecord(ctx context.Context, db *pgxpool.Pool, tbl string, cols []string, id string) (map[string]any, error) {
+	row := db.QueryRow(ctx,
+		fmt.Sprintf("SELECT %s FROM %s WHERE id = $1", strings.Join(cols, ", "), tbl),
+		id,
+	)
+	return scanGet(row, cols, tbl, id)
+}
+
+func scanGet(row rowScanner, cols []string, tbl string, id string) (map[string]any, error) {
 	vals := make([]any, len(cols))
 	ptrs := make([]any, len(cols))
 	for i := range vals {
 		ptrs[i] = &vals[i]
 	}
-	err := db.QueryRow(ctx,
-		fmt.Sprintf("SELECT %s FROM %s WHERE id = $1", strings.Join(cols, ", "), tbl),
-		id,
-	).Scan(ptrs...)
-	if err != nil {
+	if err := row.Scan(ptrs...); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
 		return nil, fmt.Errorf("get %s id=%s: %w", tbl, id, err)
 	}
-	row := make(map[string]any, len(cols))
+	rec := make(map[string]any, len(cols))
 	for i, name := range cols {
-		row[name] = vals[i]
+		rec[name] = vals[i]
 	}
-	return row, nil
+	return rec, nil
 }
 
 func createRecord(ctx context.Context, db *pgxpool.Pool, tbl string, fields []FieldDef, input map[string]any) (map[string]any, error) {

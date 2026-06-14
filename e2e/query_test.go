@@ -179,6 +179,133 @@ func TestListKantone(t *testing.T) {
 	})
 }
 
+func TestGetOrtschaft(t *testing.T) {
+	ctx := context.Background()
+
+	pgc, err := postgres.Run(ctx, "postgres:16-alpine",
+		postgres.WithDatabase("stratum"),
+		postgres.WithUsername("stratum"),
+		postgres.WithPassword("stratum"),
+		testcontainers.WithWaitStrategy(
+			wait.ForLog("database system is ready to accept connections").
+				WithOccurrence(2).
+				WithStartupTimeout(30*time.Second),
+		),
+	)
+	if err != nil {
+		t.Fatalf("start postgres: %v", err)
+	}
+	t.Cleanup(func() { _ = pgc.Terminate(ctx) })
+
+	dsn, err := pgc.ConnectionString(ctx, "sslmode=disable")
+	if err != nil {
+		t.Fatalf("connection string: %v", err)
+	}
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		t.Fatalf("connect pool: %v", err)
+	}
+	t.Cleanup(pool.Close)
+
+	handler := server.Handler(server.NewStratumServer().WithDB(pool))
+
+	// ── 1. Upload schema ────────────────────────────────────────────────────
+	sdl := `
+		type Kanton {
+			id: ID!
+			name: String!
+		}
+		type Ortschaft {
+			id: ID!
+			name: String!
+			kanton: Kanton!
+		}
+	`
+	body, _ := json.Marshal(api.SchemaUploadRequest{Sdl: sdl})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/schemas/swiss",
+		bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("upload schema: expected 200, got %d — %s", w.Code, w.Body.String())
+	}
+
+	// ── 2. Create a Kanton ──────────────────────────────────────────────────
+	kantonResult := gqlQuery(t, handler,
+		`{"query":"mutation { kanton { create(input: {name: \"Zürich\"}) { id name } } }"}`)
+	if len(kantonResult.Errors) > 0 {
+		t.Fatalf("create kanton: %v", kantonResult.Errors)
+	}
+	kantonNS := kantonResult.Data["kanton"].(map[string]any)
+	kantonCreate := kantonNS["create"].(map[string]any)
+	kantonID := kantonCreate["id"].(string)
+
+	// ── 3. Create an Ortschaft ──────────────────────────────────────────────
+	ortCreateBody := fmt.Sprintf(
+		`{"query":"mutation { ortschaft { create(input: {name: \"Winterthur\", kantonId: \"%s\"}) { id name } } }"}`,
+		kantonID,
+	)
+	ortResult := gqlQuery(t, handler, ortCreateBody)
+	if len(ortResult.Errors) > 0 {
+		t.Fatalf("create ortschaft: %v", ortResult.Errors)
+	}
+	ortNS := ortResult.Data["ortschaft"].(map[string]any)
+	ortCreate := ortNS["create"].(map[string]any)
+	ortID := ortCreate["id"].(string)
+
+	// ── 4. get(id) returns the record with all scalar fields ────────────────
+	t.Run("get_existing_record", func(t *testing.T) {
+		getBody := fmt.Sprintf(
+			`{"query":"{ ortschaft { get(id: \"%s\") { id name } } }"}`,
+			ortID,
+		)
+		result := gqlQuery(t, handler, getBody)
+		rec := extractGet(t, result, "ortschaft")
+		if rec == nil {
+			t.Fatal("expected record, got null")
+		}
+		if rec["id"] != ortID {
+			t.Errorf("id = %v, want %v", rec["id"], ortID)
+		}
+		if rec["name"] != "Winterthur" {
+			t.Errorf("name = %v, want Winterthur", rec["name"])
+		}
+	})
+
+	// ── 5. get(id) with unknown ID returns null (not an error) ──────────────
+	t.Run("get_unknown_id_returns_null", func(t *testing.T) {
+		result := gqlQuery(t, handler,
+			`{"query":"{ ortschaft { get(id: \"00000000-0000-0000-0000-000000000000\") { id name } } }"}`)
+		if len(result.Errors) > 0 {
+			t.Fatalf("expected no errors for unknown ID, got: %v", result.Errors)
+		}
+		rec := extractGet(t, result, "ortschaft")
+		if rec != nil {
+			t.Fatalf("expected null for unknown ID, got %v", rec)
+		}
+	})
+
+	// ── 6. get returns all requested scalar fields correctly typed ──────────
+	t.Run("get_scalar_fields_typed", func(t *testing.T) {
+		getBody := fmt.Sprintf(
+			`{"query":"{ ortschaft { get(id: \"%s\") { id name } } }"}`,
+			ortID,
+		)
+		result := gqlQuery(t, handler, getBody)
+		rec := extractGet(t, result, "ortschaft")
+		if rec == nil {
+			t.Fatal("expected record, got null")
+		}
+		if _, ok := rec["id"].(string); !ok {
+			t.Errorf("id should be string, got %T", rec["id"])
+		}
+		if _, ok := rec["name"].(string); !ok {
+			t.Errorf("name should be string, got %T", rec["name"])
+		}
+	})
+}
+
 type gqlResult struct {
 	Data   map[string]any             `json:"data"`
 	Errors []struct{ Message string } `json:"errors"`
@@ -230,4 +357,24 @@ func extractList(t *testing.T, result gqlResult, typeName string) []map[string]a
 		list = []map[string]any{}
 	}
 	return list
+}
+
+func extractGet(t *testing.T, result gqlResult, typeName string) map[string]any {
+	t.Helper()
+	if len(result.Errors) > 0 {
+		t.Fatalf("unexpected GraphQL errors: %v", result.Errors)
+	}
+	ns, ok := result.Data[typeName].(map[string]any)
+	if !ok {
+		t.Fatalf("expected %s namespace in data, got %T", typeName, result.Data[typeName])
+	}
+	raw := ns["get"]
+	if raw == nil {
+		return nil
+	}
+	rec, ok := raw.(map[string]any)
+	if !ok {
+		t.Fatalf("expected map or null in %s.get, got %T", typeName, raw)
+	}
+	return rec
 }
