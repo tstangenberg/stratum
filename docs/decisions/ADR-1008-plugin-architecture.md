@@ -4,7 +4,7 @@
 
 ## Context and Problem Statement
 
-Stratum needs to be extensible without requiring changes to its core. Extensions must cover: data types, query operators, pagination, data hooks, schema change hooks, authentication, and health checks. The plugin model determines how extensions integrate, how they are registered, and how they are ordered.
+Stratum needs to be extensible without requiring changes to its core. Extensions must cover: data types, query operators, list query augmentation, data hooks, schema change hooks, authentication, and health checks. The plugin model determines how extensions integrate, how they are registered, and how they are ordered.
 
 ## Considered Options
 
@@ -18,42 +18,62 @@ Stratum needs to be extensible without requiring changes to its core. Extensions
 
 Chosen: **seven distinct plugin types**, each with a dedicated Go interface:
 
-| Type | Interface | Responsibility |
-|------|-----------|---------------|
-| `ScalarPlugin` | `Name`, `ColumnType`, `GraphQLType` | Maps a GraphQL scalar to a PostgreSQL column type and a `graphql-go` scalar type; serialization is delegated to the `*graphql.Scalar` value returned by `GraphQLType` |
-| `FilterPlugin` | `Name`, `ScalarType`, `Operators`, `ToSQL` | Adds filter operators (`eq`, `gte`, etc.) for a specific scalar type |
-| `PaginationPlugin` | `Name`, `Arguments`, `ApplySQL`, `WrapResponse` | Adds pagination arguments (`offset`, cursor) to `list` queries |
-| `DMLHookPlugin` | `Name`, `Directives`, `Events`, `Execute` | Runs before/after INSERT, UPDATE, SELECT |
-| `DDLHookPlugin` | `Name`, `Directives`, `Events`, `Execute` | Runs before/after schema migrations |
-| `AuthPlugin` | `Name`, `Authenticate` | Authenticates every request, returns `AuthContext` |
-| `HealthPlugin` | `Name`, `Check` | Contributes a named health check to `GET /api/v1/health/ready` |
+| Type | Interface | Responsibility | Status |
+|------|-----------|---------------|--------|
+| `ScalarPlugin` | `Name`, `ColumnType`, `GraphQLType` | Maps a GraphQL scalar to a PostgreSQL column type and a `graphql-go` scalar type | Implemented |
+| `FilterPlugin` | `Name`, `ScalarType`, `Operators`, `ToSQL` | Adds filter operators (`eq`, `gte`, etc.) for a specific scalar type | Planned |
+| `QueryModifier` | `Name`, `Arguments`, `ModifyQuery` | Augments list queries before execution — adds GraphQL arguments and appends SQL clauses | Implemented |
+| `DMLHookPlugin` | `Name`, `Directives`, `Events`, `Execute` | Runs before/after INSERT, UPDATE, SELECT | Planned |
+| `DDLHookPlugin` | `Name`, `Directives`, `Events`, `Execute` | Runs before/after schema migrations | Planned |
+| `AuthPlugin` | `Name`, `Authenticate` | Authenticates every request, returns `AuthContext` | Planned |
+| `HealthPlugin` | `Name`, `Check` | Contributes a named health check to `GET /api/v1/health/ready` | Implemented |
 
-**Registration** uses Go's `init()` pattern — plugins register themselves via blank imports in `main.go`:
+## Plugin extension points
+
+### ScalarPlugin — `internal/plugin/scalar/`
+
+Maps a GraphQL scalar name to a PostgreSQL column type and a `graphql-go` output type. Registered in `NewStratumServer` as a `map[string]scalar.Plugin` keyed by scalar name. `BuildHandler` uses the map to resolve field column types and pass the correct `intType` to `QueryModifier.Arguments`.
+
+### QueryModifier — `internal/plugin/`
+
+Augments list queries before execution. Every registered modifier is applied in pipeline order:
+
+1. `Arguments(intType)` — declares GraphQL arguments for the `list` field (return `nil` if none needed)
+2. `ModifyQuery(query, params, args)` — appends SQL clauses and extends the parameter slice
 
 ```go
-import (
-    _ "github.com/stratum/scalar-string"
-    _ "github.com/stratum/api-key-auth"
-    _ "github.com/stratum/database-health"
-)
+type QueryModifier interface {
+    Name() string
+    Arguments(intType graphql.Output) graphql.FieldConfigArgument
+    ModifyQuery(query string, params []any, args map[string]any) (string, []any, error)
+}
 ```
 
-**Hook ordering** is configured in `stratum.yaml` with numeric priority keys (lower = earlier). DML and DDL hooks have separate numbering spaces. Health plugins have no ordering — all checks run concurrently and results are aggregated.
+Registered in `NewStratumServer` as `[]plugin.QueryModifier`. Add a new modifier via `WithQueryModifiers(...)`. The default pipeline contains `pagination-simple`.
 
-**HealthPlugin interface:**
+To add a new `QueryModifier` (e.g. a soft-delete filter):
+1. Implement `plugin.QueryModifier` in a new package under `internal/plugin/`
+2. Add it to the pipeline in `NewStratumServer` or pass it via `WithQueryModifiers`
+
+### HealthPlugin — `internal/plugin/health.go`
+
+Contributes a named component to `GET /api/v1/health/ready`. All checks run concurrently; the overall status is degraded if any check returns error.
 
 ```go
 type HealthPlugin interface {
     Name() string
     Check(ctx context.Context) HealthStatus
 }
-
-type HealthStatus struct {
-    Status  string         // "ok" | "error"
-    Details map[string]any // optional extra info
-}
 ```
 
-The `/api/v1/health/ready` endpoint aggregates all registered health plugins. Adding a new dependency (S3, Redis, etc.) to Stratum requires only a new plugin — zero core changes.
+Registered as variadic arguments to `NewStratumServer(plugins ...HealthPlugin)`.
 
-**MVP bundle:** 13 plugins — 5 scalars, 5 eq-filters, `pagination-simple`, `api-key-auth`, `database-health` — are compiled into the default binary via blank imports.
+## Registration
+
+Plugins are wired via constructor injection in `NewStratumServer` and `server.Handler`. There is no global registry or `init()` side-effect pattern. The default binary in `cmd/stratum/main.go` composes the MVP bundle directly.
+
+**MVP bundle:** 5 scalars (`String`, `ID`, `Int`, `Float`, `Boolean`), `pagination-simple`, `database-health`.
+
+## Hook ordering
+
+DML and DDL hooks (when implemented) will be ordered via numeric priority in `stratum.yaml` (lower = earlier). `QueryModifier` pipeline order is determined by slice position in `WithQueryModifiers`. Health plugins have no ordering — all checks run concurrently.
