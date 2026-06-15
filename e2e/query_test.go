@@ -286,7 +286,8 @@ func TestGetOrtschaft(t *testing.T) {
 		}
 	})
 
-	// ── 6. get returns all requested scalar fields correctly typed ──────────
+	// ── 6. get returns scalar fields as correct Go types (ID must be string, not
+	//       a numeric type graphql-go could theoretically coerce it to) ─────────
 	t.Run("get_scalar_fields_typed", func(t *testing.T) {
 		getBody := fmt.Sprintf(
 			`{"query":"{ ortschaft { get(id: \"%s\") { id name } } }"}`,

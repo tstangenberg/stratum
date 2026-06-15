@@ -142,6 +142,9 @@ func BuildHandler(db *pgxpool.Pool, schemaName string, ps *ParsedSchema, scalars
 					},
 					Resolve: func(p graphql.ResolveParams) (any, error) {
 						rec, err := getRecord(p.Context, db, tbl, colNames, p.Args["id"].(string))
+						// map[string]any(nil) returned into any is a non-nil interface (type set,
+						// value nil); graphql-go would resolve it as an object instead of null.
+						// Return untyped nil explicitly so the field serialises as JSON null.
 						if rec == nil {
 							return nil, err
 						}

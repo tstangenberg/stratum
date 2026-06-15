@@ -138,8 +138,8 @@ func TestScanGet_ScanError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error from scanGet")
 	}
-	if !strings.Contains(err.Error(), "scan") || !strings.Contains(err.Error(), "some-id") {
-		t.Errorf("error = %q, want it to mention scan and id", err)
+	if !strings.Contains(err.Error(), "test_t") || !strings.Contains(err.Error(), "some-id") {
+		t.Errorf("error = %q, want it to mention table and id", err)
 	}
 }
 
