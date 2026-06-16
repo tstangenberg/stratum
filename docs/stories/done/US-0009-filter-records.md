@@ -1,7 +1,7 @@
 ---
 id: US-009
 tags: [data, query, filter]
-status: ready
+status: done
 ---
 
 # US-0009: Filter records by field value
@@ -16,11 +16,11 @@ Filtering is operator-based. The `eq` operator is provided for all MVP scalar ty
 
 ## Acceptance Criteria
 
-- [ ] `list(filter: { <field>: { eq: <value> } })` returns only matching records
-- [ ] `eq` filter works for all MVP scalar types: `String`, `Int`, `Float`, `Boolean`, `ID`
-- [ ] Filter with no matches returns an empty array
-- [ ] Filter combined with `limit`/`offset` works correctly
-- [ ] `plz { list(filter: { plz: { eq: 8001 } }) { plz ortschaft { name } } }` returns the correct record
+- [x] `list(filter: { <field>: { eq: <value> } })` returns only matching records
+- [x] `eq` filter works for all MVP scalar types: `String`, `Int`, `Float`, `Boolean`, `ID`
+- [x] Filter with no matches returns an empty array
+- [x] Filter combined with `limit`/`offset` works correctly
+- [x] `plz { list(filter: { plz: { eq: 8001 } }) { plz ortschaft { name } } }` returns the correct record
 
 ## E2E Tests
 

@@ -25,8 +25,11 @@ import (
 
 	"github.com/graphql-go/graphql"
 	"github.com/jackc/pgx/v5"
+	"github.com/tstangenberg/stratum/internal/plugin"
+	eqfilter "github.com/tstangenberg/stratum/internal/plugin/filter/eq"
 	"github.com/tstangenberg/stratum/internal/plugin/scalar"
 	idscalar "github.com/tstangenberg/stratum/internal/plugin/scalar/id"
+	intscalar "github.com/tstangenberg/stratum/internal/plugin/scalar/int"
 	stringscalar "github.com/tstangenberg/stratum/internal/plugin/scalar/string"
 )
 
@@ -280,5 +283,281 @@ func TestScanList_ScanError(t *testing.T) {
 	}
 	if !rows.closed {
 		t.Error("expected rows to be closed")
+	}
+}
+
+func TestIndexFilterPlugins(t *testing.T) {
+	filters := []plugin.FilterPlugin{
+		eqfilter.New("String", graphql.String),
+		eqfilter.New("Int", graphql.Int),
+	}
+	idx := indexFilterPlugins(filters)
+	if len(idx["String"]) != 1 {
+		t.Errorf("expected 1 filter for String, got %d", len(idx["String"]))
+	}
+	if len(idx["Int"]) != 1 {
+		t.Errorf("expected 1 filter for Int, got %d", len(idx["Int"]))
+	}
+	if len(idx["Float"]) != 0 {
+		t.Errorf("expected 0 filters for Float, got %d", len(idx["Float"]))
+	}
+}
+
+func TestBuildFilterInput_NoFilters(t *testing.T) {
+	td := TypeDef{
+		Name:   "Widget",
+		Fields: []FieldDef{{Name: "name", Type: "String"}},
+	}
+	got := buildFilterInput(td, indexFilterPlugins(nil), map[string]scalar.Plugin{"String": stringscalar.Plugin{}})
+	if got != nil {
+		t.Error("expected nil when no filter plugins registered")
+	}
+}
+
+func TestBuildFilterInput_SkipsRelations(t *testing.T) {
+	td := TypeDef{
+		Name: "Ortschaft",
+		Fields: []FieldDef{
+			{Name: "id", Type: "ID"},
+			{Name: "kanton", Type: "Kanton", IsRelation: true},
+		},
+	}
+	scalars := map[string]scalar.Plugin{"ID": idscalar.Plugin{}}
+	filters := []plugin.FilterPlugin{eqfilter.New("ID", graphql.ID)}
+	input := buildFilterInput(td, indexFilterPlugins(filters), scalars)
+	if input == nil {
+		t.Fatal("expected non-nil filter input")
+	}
+	fields := input.Fields()
+	if _, ok := fields["kanton"]; ok {
+		t.Error("relation field 'kanton' should not appear in filter input")
+	}
+	if _, ok := fields["id"]; !ok {
+		t.Error("scalar field 'id' should appear in filter input")
+	}
+}
+
+func TestBuildFilterInput_WithFilters(t *testing.T) {
+	td := TypeDef{
+		Name: "PLZ",
+		Fields: []FieldDef{
+			{Name: "id", Type: "ID"},
+			{Name: "plz", Type: "Int"},
+			{Name: "name", Type: "String"},
+		},
+	}
+	scalars := map[string]scalar.Plugin{
+		"ID":     idscalar.Plugin{},
+		"Int":    intscalar.Plugin{},
+		"String": stringscalar.Plugin{},
+	}
+	filters := []plugin.FilterPlugin{
+		eqfilter.New("ID", graphql.ID),
+		eqfilter.New("Int", scalars["Int"].GraphQLType()),
+		eqfilter.New("String", graphql.String),
+	}
+	input := buildFilterInput(td, indexFilterPlugins(filters), scalars)
+	if input == nil {
+		t.Fatal("expected non-nil filter input")
+	}
+	fields := input.Fields()
+	for _, name := range []string{"id", "plz", "name"} {
+		if _, ok := fields[name]; !ok {
+			t.Errorf("expected field %q in filter input", name)
+		}
+	}
+}
+
+func TestApplyFilters_NoFilter(t *testing.T) {
+	fields := []FieldDef{{Name: "id", Type: "ID"}}
+	idx := indexFilterPlugins(nil)
+	clauses, params, err := applyFilters(map[string]any{}, fields, idx, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(clauses) != 0 {
+		t.Errorf("expected 0 clauses, got %d", len(clauses))
+	}
+	if len(params) != 0 {
+		t.Errorf("expected 0 params, got %d", len(params))
+	}
+}
+
+func TestApplyFilters_EqFilter(t *testing.T) {
+	fields := []FieldDef{
+		{Name: "id", Type: "ID"},
+		{Name: "plz", Type: "Int"},
+		{Name: "name", Type: "String"},
+	}
+	filters := []plugin.FilterPlugin{
+		eqfilter.New("Int", graphql.Int),
+		eqfilter.New("String", graphql.String),
+	}
+	idx := indexFilterPlugins(filters)
+	args := map[string]any{
+		"filter": map[string]any{
+			"plz": map[string]any{"eq": 8001},
+		},
+	}
+	clauses, params, err := applyFilters(args, fields, idx, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(clauses) != 1 {
+		t.Fatalf("expected 1 clause, got %d", len(clauses))
+	}
+	if clauses[0] != "plz = $1" {
+		t.Errorf("clause = %q, want %q", clauses[0], "plz = $1")
+	}
+	if len(params) != 1 || params[0] != 8001 {
+		t.Errorf("params = %v, want [8001]", params)
+	}
+}
+
+func TestApplyFilters_MultipleFields(t *testing.T) {
+	fields := []FieldDef{
+		{Name: "plz", Type: "Int"},
+		{Name: "name", Type: "String"},
+	}
+	filters := []plugin.FilterPlugin{
+		eqfilter.New("Int", graphql.Int),
+		eqfilter.New("String", graphql.String),
+	}
+	idx := indexFilterPlugins(filters)
+	args := map[string]any{
+		"filter": map[string]any{
+			"plz":  map[string]any{"eq": 8001},
+			"name": map[string]any{"eq": "Zürich"},
+		},
+	}
+	clauses, params, err := applyFilters(args, fields, idx, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(clauses) != 2 {
+		t.Fatalf("expected 2 clauses, got %d", len(clauses))
+	}
+	if len(params) != 2 {
+		t.Fatalf("expected 2 params, got %d", len(params))
+	}
+}
+
+func TestApplyFilters_NilValue(t *testing.T) {
+	fields := []FieldDef{{Name: "plz", Type: "Int"}}
+	filters := []plugin.FilterPlugin{eqfilter.New("Int", graphql.Int)}
+	idx := indexFilterPlugins(filters)
+	args := map[string]any{
+		"filter": map[string]any{
+			"plz": map[string]any{"eq": nil},
+		},
+	}
+	clauses, _, err := applyFilters(args, fields, idx, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(clauses) != 0 {
+		t.Errorf("expected 0 clauses for nil value, got %d", len(clauses))
+	}
+}
+
+func TestApplyFilters_WithExistingParams(t *testing.T) {
+	fields := []FieldDef{{Name: "plz", Type: "Int"}}
+	filters := []plugin.FilterPlugin{eqfilter.New("Int", graphql.Int)}
+	idx := indexFilterPlugins(filters)
+	args := map[string]any{
+		"filter": map[string]any{
+			"plz": map[string]any{"eq": 3000},
+		},
+	}
+	existingParams := []any{"existing"}
+	clauses, params, err := applyFilters(args, fields, idx, existingParams)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(clauses) != 1 {
+		t.Fatalf("expected 1 clause, got %d", len(clauses))
+	}
+	if clauses[0] != "plz = $2" {
+		t.Errorf("clause = %q, want %q", clauses[0], "plz = $2")
+	}
+	if len(params) != 2 || params[0] != "existing" || params[1] != 3000 {
+		t.Errorf("params = %v, want [existing 3000]", params)
+	}
+}
+
+func TestApplyFilters_ErrorFromPlugin(t *testing.T) {
+	fields := []FieldDef{{Name: "plz", Type: "Int"}}
+	filters := []plugin.FilterPlugin{eqfilter.New("Int", graphql.Int)}
+	idx := indexFilterPlugins(filters)
+	args := map[string]any{
+		"filter": map[string]any{
+			"plz": map[string]any{"gte": 100},
+		},
+	}
+	_, _, err := applyFilters(args, fields, idx, nil)
+	if err == nil {
+		t.Fatal("expected error from unsupported operator")
+	}
+	if !strings.Contains(err.Error(), `"plz"."gte"`) {
+		t.Errorf("error = %q, want it to mention plz.gte", err)
+	}
+}
+
+func TestBuildFilterInput_EmptyOperators(t *testing.T) {
+	td := TypeDef{
+		Name:   "Widget",
+		Fields: []FieldDef{{Name: "status", Type: "Unknown"}},
+	}
+	scalars := map[string]scalar.Plugin{"Unknown": stringscalar.Plugin{}}
+	// No filter plugin for "Unknown" type → no filter input
+	filters := []plugin.FilterPlugin{eqfilter.New("String", graphql.String)}
+	got := buildFilterInput(td, indexFilterPlugins(filters), scalars)
+	if got != nil {
+		t.Error("expected nil filter input when field type has no matching filter plugin")
+	}
+}
+
+type emptyOpsFilter struct{}
+
+func (emptyOpsFilter) Name() string       { return "empty-ops" }
+func (emptyOpsFilter) ScalarType() string { return "String" }
+func (emptyOpsFilter) Operators() graphql.InputObjectConfigFieldMap {
+	return graphql.InputObjectConfigFieldMap{}
+}
+func (emptyOpsFilter) ToSQL(string, string, any, int) (string, []any, error) {
+	return "", nil, nil
+}
+
+func TestBuildFilterInput_EmptyOperatorsFromPlugin(t *testing.T) {
+	td := TypeDef{
+		Name:   "Widget",
+		Fields: []FieldDef{{Name: "name", Type: "String"}},
+	}
+	scalars := map[string]scalar.Plugin{"String": stringscalar.Plugin{}}
+	filters := []plugin.FilterPlugin{emptyOpsFilter{}}
+	got := buildFilterInput(td, indexFilterPlugins(filters), scalars)
+	if got != nil {
+		t.Error("expected nil filter input when plugin returns empty operators")
+	}
+}
+
+func TestApplyFilters_SkipsRelationFields(t *testing.T) {
+	fields := []FieldDef{
+		{Name: "kanton", Type: "Kanton", IsRelation: true},
+		{Name: "name", Type: "String"},
+	}
+	filters := []plugin.FilterPlugin{eqfilter.New("String", graphql.String)}
+	idx := indexFilterPlugins(filters)
+	args := map[string]any{
+		"filter": map[string]any{
+			"kanton": map[string]any{"eq": "ZH"},
+		},
+	}
+	clauses, _, err := applyFilters(args, fields, idx, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(clauses) != 0 {
+		t.Errorf("expected 0 clauses for relation field, got %d", len(clauses))
 	}
 }

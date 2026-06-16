@@ -29,6 +29,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/tstangenberg/stratum/internal/api"
 	"github.com/tstangenberg/stratum/internal/plugin"
+	eqfilter "github.com/tstangenberg/stratum/internal/plugin/filter/eq"
 	simplepagination "github.com/tstangenberg/stratum/internal/plugin/pagination/simple"
 	"github.com/tstangenberg/stratum/internal/plugin/scalar"
 	booleanscalar "github.com/tstangenberg/stratum/internal/plugin/scalar/boolean"
@@ -48,20 +49,29 @@ type StratumServer struct {
 	schemas        *schema.Store
 	scalars        map[string]scalar.Plugin
 	queryModifiers []plugin.QueryModifier
+	filterPlugins  []plugin.FilterPlugin
 }
 
 // NewStratumServer creates a new StratumServer with the given health plugins.
 func NewStratumServer(plugins ...plugin.HealthPlugin) *StratumServer {
+	scalars := map[string]scalar.Plugin{
+		"String":  stringscalar.Plugin{},
+		"ID":      idscalar.Plugin{},
+		"Int":     intscalar.Plugin{},
+		"Float":   floatscalar.Plugin{},
+		"Boolean": booleanscalar.Plugin{},
+	}
 	return &StratumServer{
 		healthPlugins:  plugins,
 		schemas:        schema.NewStore(),
 		queryModifiers: []plugin.QueryModifier{simplepagination.New()},
-		scalars: map[string]scalar.Plugin{
-			"String":  stringscalar.Plugin{},
-			"ID":      idscalar.Plugin{},
-			"Int":     intscalar.Plugin{},
-			"Float":   floatscalar.Plugin{},
-			"Boolean": booleanscalar.Plugin{},
+		scalars:        scalars,
+		filterPlugins: []plugin.FilterPlugin{
+			eqfilter.New("String", scalars["String"].GraphQLType()),
+			eqfilter.New("ID", scalars["ID"].GraphQLType()),
+			eqfilter.New("Int", scalars["Int"].GraphQLType()),
+			eqfilter.New("Float", scalars["Float"].GraphQLType()),
+			eqfilter.New("Boolean", scalars["Boolean"].GraphQLType()),
 		},
 	}
 }
@@ -76,6 +86,13 @@ func (s *StratumServer) WithDB(db *pgxpool.Pool) *StratumServer {
 // The default pipeline contains pagination-simple; callers must include it explicitly if still needed.
 func (s *StratumServer) WithQueryModifiers(modifiers ...plugin.QueryModifier) *StratumServer {
 	s.queryModifiers = modifiers
+	return s
+}
+
+// WithFilterPlugins replaces the entire filter plugin set and returns the server for chaining.
+// The default set contains eq-filters for all MVP scalars; callers must include them explicitly if still needed.
+func (s *StratumServer) WithFilterPlugins(plugins ...plugin.FilterPlugin) *StratumServer {
+	s.filterPlugins = plugins
 	return s
 }
 
@@ -183,7 +200,7 @@ func (s *StratumServer) UpsertSchema(ctx context.Context, req api.UpsertSchemaRe
 		}
 	}
 
-	h, err := schema.BuildHandler(s.db, name, ps, s.scalars, s.queryModifiers)
+	h, err := schema.BuildHandler(s.db, name, ps, s.scalars, s.queryModifiers, s.filterPlugins)
 	if err != nil {
 		return nil, fmt.Errorf("upsert schema %q: build handler: %w", name, err)
 	}

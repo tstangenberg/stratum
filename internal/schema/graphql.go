@@ -36,7 +36,7 @@ import (
 // BuildHandler creates an HTTP handler that serves GraphQL for the given schema.
 // It builds a dynamic graphql-go schema with Query (list, get) and Mutation (create) per type.
 // Relation fields are resolved by loading the referenced record from the DB.
-func BuildHandler(db *pgxpool.Pool, schemaName string, ps *ParsedSchema, scalars map[string]scalar.Plugin, modifiers []plugin.QueryModifier) (http.Handler, error) {
+func BuildHandler(db *pgxpool.Pool, schemaName string, ps *ParsedSchema, scalars map[string]scalar.Plugin, modifiers []plugin.QueryModifier, filters []plugin.FilterPlugin) (http.Handler, error) {
 	intType := graphql.Int
 	if s, ok := scalars["Int"]; ok {
 		intType = s.GraphQLType()
@@ -83,6 +83,7 @@ func BuildHandler(db *pgxpool.Pool, schemaName string, ps *ParsedSchema, scalars
 
 	queryFields := graphql.Fields{}
 	mutationFields := graphql.Fields{}
+	filtersByScalar := indexFilterPlugins(filters)
 
 	for _, t := range ps.Types {
 		obj := gqlObjects[t.Name]
@@ -116,6 +117,13 @@ func BuildHandler(db *pgxpool.Pool, schemaName string, ps *ParsedSchema, scalars
 		if err != nil {
 			return nil, err
 		}
+
+		filterInput := buildFilterInput(t, filtersByScalar, scalars)
+		if filterInput != nil {
+			listArgMap["filter"] = &graphql.ArgumentConfig{Type: filterInput}
+		}
+
+		typFields := t.Fields
 		queryNS := graphql.NewObject(graphql.ObjectConfig{
 			Name: t.Name + "Query",
 			Fields: graphql.Fields{
@@ -123,10 +131,17 @@ func BuildHandler(db *pgxpool.Pool, schemaName string, ps *ParsedSchema, scalars
 					Type: graphql.NewNonNull(graphql.NewList(graphql.NewNonNull(obj))),
 					Args: listArgMap,
 					Resolve: func(p graphql.ResolveParams) (any, error) {
-						query := fmt.Sprintf("SELECT %s FROM %s ORDER BY id", strings.Join(colNames, ", "), tbl)
+						query := fmt.Sprintf("SELECT %s FROM %s", strings.Join(colNames, ", "), tbl)
 						var params []any
+						whereClauses, params, err := applyFilters(p.Args, typFields, filtersByScalar, params)
+						if err != nil {
+							return nil, err
+						}
+						if len(whereClauses) > 0 {
+							query += " WHERE " + strings.Join(whereClauses, " AND ")
+						}
+						query += " ORDER BY id"
 						for _, mod := range modifiers {
-							var err error
 							query, params, err = mod.ModifyQuery(query, params, p.Args)
 							if err != nil {
 								return nil, err
@@ -401,6 +416,86 @@ func createRecord(ctx context.Context, db *pgxpool.Pool, tbl string, fields []Fi
 		}
 	}
 	return row, nil
+}
+
+// buildFilterInput creates the GraphQL filter input type for a domain type.
+// For each scalar field, it creates a nested input object with operators from matching filter plugins.
+// Returns nil if no filterable fields exist.
+func buildFilterInput(t TypeDef, filtersByScalar map[string][]plugin.FilterPlugin, scalars map[string]scalar.Plugin) *graphql.InputObject {
+	fields := graphql.InputObjectConfigFieldMap{}
+	for _, f := range t.Fields {
+		if f.IsRelation {
+			continue
+		}
+		fps, ok := filtersByScalar[f.Type]
+		if !ok {
+			continue
+		}
+		operatorFields := graphql.InputObjectConfigFieldMap{}
+		for _, fp := range fps {
+			for k, v := range fp.Operators() {
+				operatorFields[k] = v
+			}
+		}
+		if len(operatorFields) == 0 {
+			continue
+		}
+		fields[f.Name] = &graphql.InputObjectFieldConfig{
+			Type: graphql.NewInputObject(graphql.InputObjectConfig{
+				Name:   t.Name + "_" + f.Name + "_filter",
+				Fields: operatorFields,
+			}),
+		}
+	}
+	if len(fields) == 0 {
+		return nil
+	}
+	return graphql.NewInputObject(graphql.InputObjectConfig{
+		Name:   t.Name + "Filter",
+		Fields: fields,
+	})
+}
+
+// indexFilterPlugins groups filter plugins by their scalar type for efficient lookup.
+func indexFilterPlugins(filters []plugin.FilterPlugin) map[string][]plugin.FilterPlugin {
+	m := make(map[string][]plugin.FilterPlugin, len(filters))
+	for _, f := range filters {
+		m[f.ScalarType()] = append(m[f.ScalarType()], f)
+	}
+	return m
+}
+
+// applyFilters extracts the filter argument from GraphQL args and generates SQL WHERE clauses.
+func applyFilters(args map[string]any, fields []FieldDef, filtersByScalar map[string][]plugin.FilterPlugin, params []any) ([]string, []any, error) {
+	filterArg, ok := args["filter"].(map[string]any)
+	if !ok || filterArg == nil {
+		return nil, params, nil
+	}
+	var clauses []string
+	for _, f := range fields {
+		if f.IsRelation {
+			continue
+		}
+		fieldFilter, ok := filterArg[f.Name].(map[string]any)
+		if !ok {
+			continue
+		}
+		fps := filtersByScalar[f.Type]
+		for operator, value := range fieldFilter {
+			if value == nil {
+				continue
+			}
+			for _, fp := range fps {
+				clause, newParams, err := fp.ToSQL(f.Name, operator, value, len(params)+1)
+				if err != nil {
+					return nil, nil, fmt.Errorf("schema: apply filter %q.%q: %w", f.Name, operator, err)
+				}
+				clauses = append(clauses, clause)
+				params = append(params, newParams...)
+			}
+		}
+	}
+	return clauses, params, nil
 }
 
 // newID generates a random UUID v4 string without external dependencies.
