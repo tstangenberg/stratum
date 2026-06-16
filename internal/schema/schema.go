@@ -38,7 +38,8 @@ type FieldDef struct {
 	Name       string
 	Type       string // SDL scalar name or referenced type name for relations.
 	NonNull    bool
-	IsRelation bool // true when Type refers to another object type (N:1 relation).
+	IsRelation bool // true when Type refers to another object type.
+	IsList     bool // true for list relations [OtherType] (1:N).
 }
 
 // Schema is a stored, live schema with its metadata and active GraphQL handler.
