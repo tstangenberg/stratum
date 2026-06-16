@@ -89,6 +89,13 @@ func (s *StratumServer) WithQueryModifiers(modifiers ...plugin.QueryModifier) *S
 	return s
 }
 
+// WithFilterPlugins replaces the entire filter plugin set and returns the server for chaining.
+// The default set contains eq-filters for all MVP scalars; callers must include them explicitly if still needed.
+func (s *StratumServer) WithFilterPlugins(plugins ...plugin.FilterPlugin) *StratumServer {
+	s.filterPlugins = plugins
+	return s
+}
+
 func (s *StratumServer) Liveness(_ context.Context, _ api.LivenessRequestObject) (api.LivenessResponseObject, error) {
 	return api.Liveness200JSONResponse{Status: api.LivenessResponseStatusOk}, nil
 }

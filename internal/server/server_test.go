@@ -28,7 +28,9 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/tstangenberg/stratum/internal/plugin"
+	eqfilter "github.com/tstangenberg/stratum/internal/plugin/filter/eq"
 	simplepagination "github.com/tstangenberg/stratum/internal/plugin/pagination/simple"
+	idscalar "github.com/tstangenberg/stratum/internal/plugin/scalar/id"
 )
 
 var h = Handler(NewStratumServer())
@@ -335,5 +337,16 @@ func TestWithQueryModifiers(t *testing.T) {
 	}
 	if srv.queryModifiers[0].Name() != "pagination" {
 		t.Errorf("queryModifiers[0].Name() = %q, want %q", srv.queryModifiers[0].Name(), "pagination")
+	}
+}
+
+func TestWithFilterPlugins(t *testing.T) {
+	p := eqfilter.New("ID", idscalar.Plugin{}.GraphQLType())
+	srv := NewStratumServer().WithFilterPlugins(p)
+	if len(srv.filterPlugins) != 1 {
+		t.Fatalf("len(filterPlugins) = %d, want 1", len(srv.filterPlugins))
+	}
+	if srv.filterPlugins[0].ScalarType() != "ID" {
+		t.Errorf("filterPlugins[0].ScalarType() = %q, want %q", srv.filterPlugins[0].ScalarType(), "ID")
 	}
 }
