@@ -502,6 +502,189 @@ func TestFilterPLZ(t *testing.T) {
 	})
 }
 
+func TestTraverseKantonOrtschaft(t *testing.T) {
+	ctx := context.Background()
+
+	pgc, err := postgres.Run(ctx, "postgres:16-alpine",
+		postgres.WithDatabase("stratum"),
+		postgres.WithUsername("stratum"),
+		postgres.WithPassword("stratum"),
+		testcontainers.WithWaitStrategy(
+			wait.ForLog("database system is ready to accept connections").
+				WithOccurrence(2).
+				WithStartupTimeout(30*time.Second),
+		),
+	)
+	if err != nil {
+		t.Fatalf("start postgres: %v", err)
+	}
+	t.Cleanup(func() { _ = pgc.Terminate(ctx) })
+
+	dsn, err := pgc.ConnectionString(ctx, "sslmode=disable")
+	if err != nil {
+		t.Fatalf("connection string: %v", err)
+	}
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		t.Fatalf("connect pool: %v", err)
+	}
+	t.Cleanup(pool.Close)
+
+	handler := server.Handler(server.NewStratumServer().WithDB(pool))
+
+	// ── 1. Upload schema with 1:N relation ──────────────────────────────────
+	sdl := `
+		type Kanton {
+			id: ID!
+			kuerzel: String!
+			ortschaften: [Ortschaft!]
+		}
+		type Ortschaft {
+			id: ID!
+			name: String!
+			kanton: Kanton!
+		}
+	`
+	body, _ := json.Marshal(api.SchemaUploadRequest{Sdl: sdl})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/schemas/swiss",
+		bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("upload schema: expected 200, got %d — %s", w.Code, w.Body.String())
+	}
+
+	// ── 2. Create Kantone ───────────────────────────────────────────────────
+	zhResult := gqlQuery(t, handler,
+		`{"query":"mutation { kanton { create(input: {kuerzel: \"ZH\"}) { id kuerzel } } }"}`)
+	if len(zhResult.Errors) > 0 {
+		t.Fatalf("create ZH: %v", zhResult.Errors)
+	}
+	zhID := zhResult.Data["kanton"].(map[string]any)["create"].(map[string]any)["id"].(string)
+
+	beResult := gqlQuery(t, handler,
+		`{"query":"mutation { kanton { create(input: {kuerzel: \"BE\"}) { id kuerzel } } }"}`)
+	if len(beResult.Errors) > 0 {
+		t.Fatalf("create BE: %v", beResult.Errors)
+	}
+
+	// ── 3. Create Ortschaften referencing ZH ────────────────────────────────
+	for _, name := range []string{"Zürich", "Winterthur"} {
+		gql := fmt.Sprintf(
+			`{"query":"mutation { ortschaft { create(input: {name: \"%s\", kantonId: \"%s\"}) { id } } }"}`,
+			name, zhID,
+		)
+		result := gqlQuery(t, handler, gql)
+		if len(result.Errors) > 0 {
+			t.Fatalf("create ortschaft %s: %v", name, result.Errors)
+		}
+	}
+	// BE has no Ortschaften
+
+	// ── 4. list with nested ortschaften ─────────────────────────────────────
+	t.Run("list_with_nested_children", func(t *testing.T) {
+		result := gqlQuery(t, handler,
+			`{"query":"{ kanton { list { kuerzel ortschaften { name } } } }"}`)
+		list := extractList(t, result, "kanton")
+		if len(list) != 2 {
+			t.Fatalf("expected 2 kantone, got %d", len(list))
+		}
+
+		// Find ZH and BE by kuerzel
+		var zh, be map[string]any
+		for _, k := range list {
+			switch k["kuerzel"] {
+			case "ZH":
+				zh = k
+			case "BE":
+				be = k
+			}
+		}
+		if zh == nil || be == nil {
+			t.Fatalf("expected ZH and BE in results, got %v", list)
+		}
+
+		// ZH should have 2 ortschaften
+		zhOrt, ok := zh["ortschaften"].([]any)
+		if !ok {
+			t.Fatalf("ZH ortschaften: expected array, got %T", zh["ortschaften"])
+		}
+		if len(zhOrt) != 2 {
+			t.Fatalf("ZH ortschaften: expected 2, got %d", len(zhOrt))
+		}
+		names := map[string]bool{}
+		for _, o := range zhOrt {
+			m := o.(map[string]any)
+			names[m["name"].(string)] = true
+		}
+		if !names["Zürich"] || !names["Winterthur"] {
+			t.Errorf("ZH ortschaften names = %v, want Zürich and Winterthur", names)
+		}
+
+		// BE should have empty array
+		beOrt, ok := be["ortschaften"].([]any)
+		if !ok {
+			t.Fatalf("BE ortschaften: expected array, got %T", be["ortschaften"])
+		}
+		if len(beOrt) != 0 {
+			t.Errorf("BE ortschaften: expected empty array, got %d items", len(beOrt))
+		}
+	})
+
+	// ── 5. empty ortschaften → empty array, not error ───────────────────────
+	t.Run("empty_children_returns_empty_array", func(t *testing.T) {
+		result := gqlQuery(t, handler,
+			`{"query":"{ kanton { list { kuerzel ortschaften { name } } } }"}`)
+		list := extractList(t, result, "kanton")
+		for _, k := range list {
+			if k["kuerzel"] == "BE" {
+				ort := k["ortschaften"]
+				if ort == nil {
+					t.Fatal("BE ortschaften is nil, expected empty array")
+				}
+				arr, ok := ort.([]any)
+				if !ok {
+					t.Fatalf("BE ortschaften: expected []any, got %T", ort)
+				}
+				if len(arr) != 0 {
+					t.Errorf("BE ortschaften: expected 0, got %d", len(arr))
+				}
+				return
+			}
+		}
+		t.Fatal("BE not found in list")
+	})
+
+	// ── 6. limit/offset on parent works with children ───────────────────────
+	t.Run("pagination_with_children", func(t *testing.T) {
+		result := gqlQuery(t, handler,
+			`{"query":"{ kanton { list(limit: 1) { kuerzel ortschaften { name } } } }"}`)
+		list := extractList(t, result, "kanton")
+		if len(list) != 1 {
+			t.Fatalf("expected 1 kanton with limit=1, got %d", len(list))
+		}
+		// Children must still be present
+		_, ok := list[0]["ortschaften"].([]any)
+		if !ok {
+			t.Fatalf("ortschaften: expected array, got %T", list[0]["ortschaften"])
+		}
+	})
+
+	// ── 7. offset skips correctly ───────────────────────────────────────────
+	t.Run("offset_with_children", func(t *testing.T) {
+		r1 := gqlQuery(t, handler,
+			`{"query":"{ kanton { list(limit: 1, offset: 0) { kuerzel } } }"}`)
+		r2 := gqlQuery(t, handler,
+			`{"query":"{ kanton { list(limit: 1, offset: 1) { kuerzel } } }"}`)
+		l1 := extractList(t, r1, "kanton")
+		l2 := extractList(t, r2, "kanton")
+		if l1[0]["kuerzel"] == l2[0]["kuerzel"] {
+			t.Errorf("offset did not advance: both returned %v", l1[0]["kuerzel"])
+		}
+	})
+}
+
 type gqlResult struct {
 	Data   map[string]any             `json:"data"`
 	Errors []struct{ Message string } `json:"errors"`
