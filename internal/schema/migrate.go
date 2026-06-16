@@ -38,6 +38,9 @@ func CreateTable(ctx context.Context, db *pgxpool.Pool, schemaName string, t Typ
 		if f.Name == "id" {
 			continue
 		}
+		if f.IsList {
+			continue
+		}
 		if f.IsRelation {
 			col := fkColumnName(f.Name)
 			refTbl := tableName(schemaName, f.Type)

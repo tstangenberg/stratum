@@ -175,6 +175,56 @@ func TestParseSDL_CircularRelation(t *testing.T) {
 	}
 }
 
+func TestParseSDL_ListRelation(t *testing.T) {
+	sdl := `
+		type Kanton { id: ID! kuerzel: String! ortschaften: [Ortschaft!] }
+		type Ortschaft { id: ID! name: String! kanton: Kanton! }
+	`
+	ps, err := schema.ParseSDL(sdl)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(ps.Types) != 2 {
+		t.Fatalf("expected 2 types, got %d", len(ps.Types))
+	}
+
+	var kanton schema.TypeDef
+	for _, td := range ps.Types {
+		if td.Name == "Kanton" {
+			kanton = td
+			break
+		}
+	}
+	if kanton.Name == "" {
+		t.Fatal("type Kanton not found")
+	}
+
+	ortF, ok := findField(kanton.Fields, "ortschaften")
+	if !ok {
+		t.Fatal("field 'ortschaften' not found in Kanton")
+	}
+	if !ortF.IsRelation {
+		t.Error("field ortschaften.IsRelation = false, want true")
+	}
+	if !ortF.IsList {
+		t.Error("field ortschaften.IsList = false, want true")
+	}
+	if ortF.Type != "Ortschaft" {
+		t.Errorf("field ortschaften.Type = %q, want %q", ortF.Type, "Ortschaft")
+	}
+}
+
+func TestParseSDL_ListRelationNotCircular(t *testing.T) {
+	sdl := `
+		type Kanton { id: ID! ortschaften: [Ortschaft!] }
+		type Ortschaft { id: ID! kanton: Kanton! }
+	`
+	_, err := schema.ParseSDL(sdl)
+	if err != nil {
+		t.Fatalf("list+N:1 should not be circular, got: %v", err)
+	}
+}
+
 func TestParseSDL_ScalarFieldNotRelation(t *testing.T) {
 	sdl := `type Location { id: ID! name: String! }`
 	ps, err := schema.ParseSDL(sdl)

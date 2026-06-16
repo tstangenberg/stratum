@@ -65,12 +65,17 @@ func ParseSDL(sdl string) (*ParsedSchema, error) {
 		}
 		td := TypeDef{Name: name}
 		for _, f := range def.Fields {
-			fd := FieldDef{
-				Name:    f.Name,
-				Type:    f.Type.NamedType,
-				NonNull: f.Type.NonNull,
+			var fd FieldDef
+			fd.Name = f.Name
+			if f.Type.Elem != nil {
+				fd.Type = f.Type.Elem.NamedType
+				fd.NonNull = f.Type.NonNull
+				fd.IsList = true
+			} else {
+				fd.Type = f.Type.NamedType
+				fd.NonNull = f.Type.NonNull
 			}
-			if userTypes[f.Type.NamedType] {
+			if userTypes[fd.Type] {
 				fd.IsRelation = true
 			}
 			td.Fields = append(td.Fields, fd)
@@ -111,7 +116,7 @@ func topoSort(byName map[string]TypeDef) ([]TypeDef, error) {
 		state[name] = visiting
 		td := byName[name]
 		for _, f := range td.Fields {
-			if f.IsRelation {
+			if f.IsRelation && !f.IsList {
 				if err := visit(f.Type); err != nil {
 					return err
 				}

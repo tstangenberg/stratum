@@ -18,6 +18,7 @@
 package schema
 
 import (
+	"context"
 	"errors"
 	"regexp"
 	"strings"
@@ -538,6 +539,442 @@ func TestBuildFilterInput_EmptyOperatorsFromPlugin(t *testing.T) {
 	got := buildFilterInput(td, indexFilterPlugins(filters), scalars)
 	if got != nil {
 		t.Error("expected nil filter input when plugin returns empty operators")
+	}
+}
+
+func TestReverseFK_Found(t *testing.T) {
+	child := TypeDef{
+		Name: "Ortschaft",
+		Fields: []FieldDef{
+			{Name: "id", Type: "ID"},
+			{Name: "name", Type: "String"},
+			{Name: "kanton", Type: "Kanton", IsRelation: true},
+		},
+	}
+	got := reverseFK(child, "Kanton")
+	if got != "kanton_id" {
+		t.Errorf("reverseFK() = %q, want %q", got, "kanton_id")
+	}
+}
+
+func TestReverseFK_NotFound(t *testing.T) {
+	child := TypeDef{
+		Name: "Ortschaft",
+		Fields: []FieldDef{
+			{Name: "id", Type: "ID"},
+			{Name: "name", Type: "String"},
+		},
+	}
+	got := reverseFK(child, "Kanton")
+	if got != "" {
+		t.Errorf("reverseFK() = %q, want empty", got)
+	}
+}
+
+func TestReverseFK_SkipsListRelation(t *testing.T) {
+	child := TypeDef{
+		Name: "Ortschaft",
+		Fields: []FieldDef{
+			{Name: "id", Type: "ID"},
+			{Name: "kantone", Type: "Kanton", IsRelation: true, IsList: true},
+		},
+	}
+	got := reverseFK(child, "Kanton")
+	if got != "" {
+		t.Errorf("reverseFK() = %q, want empty (should skip list)", got)
+	}
+}
+
+func TestColumnNames_SkipsListRelation(t *testing.T) {
+	td := TypeDef{
+		Name: "Kanton",
+		Fields: []FieldDef{
+			{Name: "id", Type: "ID"},
+			{Name: "kuerzel", Type: "String"},
+			{Name: "ortschaften", Type: "Ortschaft", IsRelation: true, IsList: true},
+		},
+	}
+	got := columnNames(td)
+	want := []string{"id", "kuerzel"}
+	if len(got) != len(want) {
+		t.Fatalf("columnNames() len = %d, want %d", len(got), len(want))
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("columnNames()[%d] = %q, want %q", i, got[i], want[i])
+		}
+	}
+}
+
+func TestBuildChildSubqueries_NoListRelations(t *testing.T) {
+	td := TypeDef{
+		Name: "Location",
+		Fields: []FieldDef{
+			{Name: "id", Type: "ID"},
+			{Name: "name", Type: "String"},
+		},
+	}
+	subs := buildChildSubqueries(td, "test", map[string]TypeDef{"Location": td})
+	if len(subs) != 0 {
+		t.Errorf("expected 0 subqueries, got %d", len(subs))
+	}
+}
+
+func TestBuildChildSubqueries_WithListRelation(t *testing.T) {
+	kantonTD := TypeDef{
+		Name: "Kanton",
+		Fields: []FieldDef{
+			{Name: "id", Type: "ID"},
+			{Name: "kuerzel", Type: "String"},
+			{Name: "ortschaften", Type: "Ortschaft", IsRelation: true, IsList: true},
+		},
+	}
+	ortTD := TypeDef{
+		Name: "Ortschaft",
+		Fields: []FieldDef{
+			{Name: "id", Type: "ID"},
+			{Name: "name", Type: "String"},
+			{Name: "kanton", Type: "Kanton", IsRelation: true},
+		},
+	}
+	typeIndex := map[string]TypeDef{"Kanton": kantonTD, "Ortschaft": ortTD}
+	subs := buildChildSubqueries(kantonTD, "swiss", typeIndex)
+	if len(subs) != 1 {
+		t.Fatalf("expected 1 subquery, got %d", len(subs))
+	}
+	if subs[0].fieldName != "ortschaften" {
+		t.Errorf("fieldName = %q, want %q", subs[0].fieldName, "ortschaften")
+	}
+	if !strings.Contains(subs[0].sql, "json_agg") {
+		t.Error("subquery should contain json_agg")
+	}
+	if !strings.Contains(subs[0].sql, "kanton_id") {
+		t.Error("subquery should reference kanton_id FK")
+	}
+	if !strings.Contains(subs[0].sql, "swiss_kanton.id") {
+		t.Error("subquery should reference parent table id")
+	}
+}
+
+func TestResolveChildren_PreLoaded(t *testing.T) {
+	preloaded := []map[string]any{{"id": "1", "name": "Zürich"}}
+	resolver := resolveChildren(nil, "tbl", nil, "", "ortschaften")
+	p := graphql.ResolveParams{
+		Source: map[string]any{"ortschaften": preloaded},
+	}
+	got, err := resolver(p)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	result, ok := got.([]map[string]any)
+	if !ok {
+		t.Fatalf("expected []map[string]any, got %T", got)
+	}
+	if len(result) != 1 || result[0]["name"] != "Zürich" {
+		t.Errorf("got %v, want [{name:Zürich}]", result)
+	}
+}
+
+func TestResolveChildren_PreLoadedNil(t *testing.T) {
+	resolver := resolveChildren(nil, "tbl", nil, "", "ortschaften")
+	p := graphql.ResolveParams{
+		Source: map[string]any{"ortschaften": nil},
+	}
+	got, err := resolver(p)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	result, ok := got.([]map[string]any)
+	if !ok {
+		t.Fatalf("expected []map[string]any, got %T", got)
+	}
+	if len(result) != 0 {
+		t.Errorf("expected empty, got %d items", len(result))
+	}
+}
+
+func TestResolveChildren_NonMapSource(t *testing.T) {
+	resolver := resolveChildren(nil, "tbl", nil, "", "ortschaften")
+	p := graphql.ResolveParams{Source: "not-a-map"}
+	got, err := resolver(p)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	result, ok := got.([]map[string]any)
+	if !ok {
+		t.Fatalf("expected []map[string]any, got %T", got)
+	}
+	if len(result) != 0 {
+		t.Errorf("expected empty, got %d items", len(result))
+	}
+}
+
+func TestResolveChildren_MissingParentID(t *testing.T) {
+	resolver := resolveChildren(nil, "tbl", nil, "", "children")
+	p := graphql.ResolveParams{
+		Source: map[string]any{"id": 42}, // not a string
+	}
+	got, err := resolver(p)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	result, ok := got.([]map[string]any)
+	if !ok {
+		t.Fatalf("expected []map[string]any, got %T", got)
+	}
+	if len(result) != 0 {
+		t.Errorf("expected empty, got %d items", len(result))
+	}
+}
+
+func TestParseJSONChildren_SliceAny(t *testing.T) {
+	input := []any{
+		map[string]any{"id": "1", "name": "Zürich"},
+		map[string]any{"id": "2", "name": "Bern"},
+	}
+	got, err := parseJSONChildren(input)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("expected 2 items, got %d", len(got))
+	}
+	if got[0]["name"] != "Zürich" || got[1]["name"] != "Bern" {
+		t.Errorf("got %v", got)
+	}
+}
+
+func TestParseJSONChildren_EmptySlice(t *testing.T) {
+	got, err := parseJSONChildren([]any{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("expected empty, got %d", len(got))
+	}
+}
+
+func TestParseJSONChildren_Bytes(t *testing.T) {
+	data := []byte(`[{"id":"1","name":"Zürich"}]`)
+	got, err := parseJSONChildren(data)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got) != 1 || got[0]["name"] != "Zürich" {
+		t.Errorf("got %v", got)
+	}
+}
+
+func TestParseJSONChildren_String(t *testing.T) {
+	got, err := parseJSONChildren(`[{"id":"1"}]`)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got) != 1 {
+		t.Errorf("expected 1 item, got %d", len(got))
+	}
+}
+
+func TestParseJSONChildren_EmptyJSON(t *testing.T) {
+	got, err := parseJSONChildren([]byte(`[]`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("expected empty, got %d", len(got))
+	}
+}
+
+func TestParseJSONChildren_UnexpectedType(t *testing.T) {
+	_, err := parseJSONChildren(42)
+	if err == nil {
+		t.Fatal("expected error for unexpected type")
+	}
+	if !strings.Contains(err.Error(), "unexpected type") {
+		t.Errorf("error = %q, want it to mention unexpected type", err)
+	}
+}
+
+func TestParseJSONChildren_NonMapInArray(t *testing.T) {
+	input := []any{"not-a-map"}
+	_, err := parseJSONChildren(input)
+	if err == nil {
+		t.Fatal("expected error for non-map item in array")
+	}
+	if !strings.Contains(err.Error(), "expected map") {
+		t.Errorf("error = %q, want it to mention expected map", err)
+	}
+}
+
+func TestParseJSONChildren_InvalidJSON(t *testing.T) {
+	_, err := parseJSONChildren([]byte(`not-json`))
+	if err == nil {
+		t.Fatal("expected error for invalid JSON")
+	}
+}
+
+func TestParseJSONChildren_BytesNull(t *testing.T) {
+	got, err := parseJSONChildren([]byte(`null`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("expected empty, got %d", len(got))
+	}
+}
+
+func TestParseJSONChildren_StringInvalidJSON(t *testing.T) {
+	_, err := parseJSONChildren("not-json")
+	if err == nil {
+		t.Fatal("expected error for invalid JSON string")
+	}
+}
+
+func TestParseJSONChildren_StringNull(t *testing.T) {
+	got, err := parseJSONChildren("null")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("expected empty, got %d", len(got))
+	}
+}
+
+func TestScanListWithChildren_ScanError(t *testing.T) {
+	scanErr := errors.New("broken scan")
+	rows := &stubRows{nextN: 1, scanErr: scanErr}
+	_, err := scanListWithChildren(rows, []string{"id"}, []string{"children"}, "test_t")
+	if err == nil {
+		t.Fatal("expected error from scanListWithChildren")
+	}
+	if !strings.Contains(err.Error(), "scan") {
+		t.Errorf("error = %q, want it to mention scan", err)
+	}
+}
+
+func TestScanListWithChildren_Empty(t *testing.T) {
+	rows := &stubRows{nextN: 0}
+	result, err := scanListWithChildren(rows, []string{"id"}, []string{"children"}, "test_t")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(result) != 0 {
+		t.Errorf("expected empty, got %d", len(result))
+	}
+}
+
+type stubRowsWithErr struct {
+	stubRows
+	rowErr error
+}
+
+func (r *stubRowsWithErr) Err() error { return r.rowErr }
+
+func TestScanListWithChildren_RowsErr(t *testing.T) {
+	rowErr := errors.New("rows iteration error")
+	rows := &stubRowsWithErr{stubRows: stubRows{nextN: 0}, rowErr: rowErr}
+	_, err := scanListWithChildren(rows, []string{"id"}, []string{"children"}, "test_t")
+	if err == nil {
+		t.Fatal("expected error from rows.Err()")
+	}
+	if !errors.Is(err, rowErr) {
+		t.Errorf("error = %v, want %v", err, rowErr)
+	}
+}
+
+type scanWithValsRows struct {
+	nextN  int
+	called int
+	vals   [][]any
+	closed bool
+}
+
+func (r *scanWithValsRows) Close()     { r.closed = true }
+func (r *scanWithValsRows) Err() error { return nil }
+func (r *scanWithValsRows) Next() bool { r.called++; return r.called <= r.nextN }
+func (r *scanWithValsRows) Scan(dest ...any) error {
+	row := r.vals[r.called-1]
+	for i, v := range row {
+		ptr := dest[i].(*any)
+		*ptr = v
+	}
+	return nil
+}
+
+func TestScanListWithChildren_HappyPath(t *testing.T) {
+	rows := &scanWithValsRows{
+		nextN: 2,
+		vals: [][]any{
+			{"id1", "ZH", []any{map[string]any{"id": "o1", "name": "Zürich"}}},
+			{"id2", "BE", []any{}},
+		},
+	}
+	result, err := scanListWithChildren(rows, []string{"id", "kuerzel"}, []string{"ortschaften"}, "test_t")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(result) != 2 {
+		t.Fatalf("expected 2 rows, got %d", len(result))
+	}
+	if result[0]["kuerzel"] != "ZH" {
+		t.Errorf("row 0 kuerzel = %v, want ZH", result[0]["kuerzel"])
+	}
+	ort, ok := result[0]["ortschaften"].([]map[string]any)
+	if !ok {
+		t.Fatalf("ortschaften: expected []map[string]any, got %T", result[0]["ortschaften"])
+	}
+	if len(ort) != 1 || ort[0]["name"] != "Zürich" {
+		t.Errorf("ortschaften = %v, want [{name:Zürich}]", ort)
+	}
+	beOrt, ok := result[1]["ortschaften"].([]map[string]any)
+	if !ok {
+		t.Fatalf("BE ortschaften: expected []map[string]any, got %T", result[1]["ortschaften"])
+	}
+	if len(beOrt) != 0 {
+		t.Errorf("BE ortschaften: expected empty, got %d", len(beOrt))
+	}
+}
+
+func TestScanListWithChildren_ParseError(t *testing.T) {
+	rows := &scanWithValsRows{
+		nextN: 1,
+		vals:  [][]any{{"id1", 42}}, // 42 is not parseable as JSON children
+	}
+	_, err := scanListWithChildren(rows, []string{"id"}, []string{"children"}, "test_t")
+	if err == nil {
+		t.Fatal("expected error for unparseable children")
+	}
+	if !strings.Contains(err.Error(), "parse children") {
+		t.Errorf("error = %q, want it to mention parse children", err)
+	}
+}
+
+type stubQuerier struct {
+	rows scannable
+	err  error
+}
+
+func (q *stubQuerier) Query(_ context.Context, _ string, _ ...any) (pgx.Rows, error) {
+	if q.err != nil {
+		return nil, q.err
+	}
+	return q.rows.(pgx.Rows), q.err
+}
+
+func TestResolveChildren_FallbackToDB_Error(t *testing.T) {
+	dbErr := errors.New("db query error")
+	mock := &stubQuerier{err: dbErr}
+	resolver := resolveChildren(mock, "test_ortschaft", []string{"id", "name"}, "kanton_id", "ortschaften")
+	p := graphql.ResolveParams{
+		Source:  map[string]any{"id": "parent-1"},
+		Context: context.Background(),
+	}
+	_, err := resolver(p)
+	if err == nil {
+		t.Fatal("expected error from DB query")
+	}
+	if !strings.Contains(err.Error(), "list children") {
+		t.Errorf("error = %q, want it to mention list children", err)
 	}
 }
 
