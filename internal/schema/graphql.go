@@ -431,10 +431,9 @@ func buildFilterInput(t TypeDef, filtersByScalar map[string][]plugin.FilterPlugi
 		if !ok {
 			continue
 		}
-		scalarGQLType := scalars[f.Type].GraphQLType()
 		operatorFields := graphql.InputObjectConfigFieldMap{}
 		for _, fp := range fps {
-			for k, v := range fp.Operators(scalarGQLType) {
+			for k, v := range fp.Operators() {
 				operatorFields[k] = v
 			}
 		}

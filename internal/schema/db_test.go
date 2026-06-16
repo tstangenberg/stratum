@@ -761,7 +761,7 @@ type brokenFilter struct {
 
 func (b brokenFilter) Name() string       { return "broken" }
 func (b brokenFilter) ScalarType() string { return "Int" }
-func (b brokenFilter) Operators(_ graphql.Output) graphql.InputObjectConfigFieldMap {
+func (b brokenFilter) Operators() graphql.InputObjectConfigFieldMap {
 	return graphql.InputObjectConfigFieldMap{
 		"eq": &graphql.InputObjectFieldConfig{Type: b.gqlType},
 	}

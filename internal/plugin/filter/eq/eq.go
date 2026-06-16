@@ -45,7 +45,7 @@ func New(scalarName string, gqlType graphql.Output) *Plugin {
 func (p *Plugin) Name() string       { return p.name }
 func (p *Plugin) ScalarType() string { return p.scalarType }
 
-func (p *Plugin) Operators(_ graphql.Output) graphql.InputObjectConfigFieldMap {
+func (p *Plugin) Operators() graphql.InputObjectConfigFieldMap {
 	return graphql.InputObjectConfigFieldMap{
 		"eq": &graphql.InputObjectFieldConfig{Type: p.gqlType},
 	}

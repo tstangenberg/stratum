@@ -28,8 +28,7 @@ type FilterPlugin interface {
 	// ScalarType returns the GraphQL scalar type name this plugin applies to (e.g. "Int").
 	ScalarType() string
 	// Operators returns the GraphQL input field configs keyed by operator name.
-	// The graphql.Output parameter is the scalar's graphql-go type.
-	Operators(scalarType graphql.Output) graphql.InputObjectConfigFieldMap
+	Operators() graphql.InputObjectConfigFieldMap
 	// ToSQL generates a SQL WHERE fragment for the given column, operator, and value.
 	// paramOffset is the next available $N placeholder index.
 	// Returns the clause (e.g. "col = $3"), the parameter values, and any error.

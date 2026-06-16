@@ -521,7 +521,7 @@ type emptyOpsFilter struct{}
 
 func (emptyOpsFilter) Name() string       { return "empty-ops" }
 func (emptyOpsFilter) ScalarType() string { return "String" }
-func (emptyOpsFilter) Operators(_ graphql.Output) graphql.InputObjectConfigFieldMap {
+func (emptyOpsFilter) Operators() graphql.InputObjectConfigFieldMap {
 	return graphql.InputObjectConfigFieldMap{}
 }
 func (emptyOpsFilter) ToSQL(string, string, any, int) (string, []any, error) {

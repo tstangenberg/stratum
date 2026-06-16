@@ -39,7 +39,7 @@ func TestPlugin_ScalarType(t *testing.T) {
 
 func TestPlugin_Operators(t *testing.T) {
 	p := New("Int", graphql.Int)
-	ops := p.Operators(graphql.Int)
+	ops := p.Operators()
 	if _, ok := ops["eq"]; !ok {
 		t.Fatal("expected 'eq' operator in field map")
 	}
