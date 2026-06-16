@@ -307,6 +307,201 @@ func TestGetOrtschaft(t *testing.T) {
 	})
 }
 
+func TestFilterPLZ(t *testing.T) {
+	ctx := context.Background()
+
+	pgc, err := postgres.Run(ctx, "postgres:16-alpine",
+		postgres.WithDatabase("stratum"),
+		postgres.WithUsername("stratum"),
+		postgres.WithPassword("stratum"),
+		testcontainers.WithWaitStrategy(
+			wait.ForLog("database system is ready to accept connections").
+				WithOccurrence(2).
+				WithStartupTimeout(30*time.Second),
+		),
+	)
+	if err != nil {
+		t.Fatalf("start postgres: %v", err)
+	}
+	t.Cleanup(func() { _ = pgc.Terminate(ctx) })
+
+	dsn, err := pgc.ConnectionString(ctx, "sslmode=disable")
+	if err != nil {
+		t.Fatalf("connection string: %v", err)
+	}
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		t.Fatalf("connect pool: %v", err)
+	}
+	t.Cleanup(pool.Close)
+
+	handler := server.Handler(server.NewStratumServer().WithDB(pool))
+
+	// ── 1. Upload schema with PLZ and Ortschaft ─────────────────────────────
+	sdl := `
+		type Ortschaft {
+			id: ID!
+			name: String!
+		}
+		type PLZ {
+			id: ID!
+			plz: Int!
+			name: String!
+			active: Boolean!
+			score: Float!
+			ortschaft: Ortschaft!
+		}
+	`
+	body, _ := json.Marshal(api.SchemaUploadRequest{Sdl: sdl})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/schemas/swiss",
+		bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("upload schema: expected 200, got %d — %s", w.Code, w.Body.String())
+	}
+
+	// ── 2. Create Ortschaften ───────────────────────────────────────────────
+	ortZHResult := gqlQuery(t, handler,
+		`{"query":"mutation { ortschaft { create(input: {name: \"Zürich\"}) { id } } }"}`)
+	ortZH := ortZHResult.Data["ortschaft"].(map[string]any)["create"].(map[string]any)["id"].(string)
+
+	ortBernResult := gqlQuery(t, handler,
+		`{"query":"mutation { ortschaft { create(input: {name: \"Bern\"}) { id } } }"}`)
+	ortBern := ortBernResult.Data["ortschaft"].(map[string]any)["create"].(map[string]any)["id"].(string)
+
+	// ── 3. Create PLZ records ───────────────────────────────────────────────
+	createPLZ := func(plz int, name string, active bool, score float64, ortID string) {
+		gql := fmt.Sprintf(
+			`{"query":"mutation { plz { create(input: {plz: %d, name: \"%s\", active: %t, score: %v, ortschaftId: \"%s\"}) { id } } }"}`,
+			plz, name, active, score, ortID,
+		)
+		req := httptest.NewRequest(http.MethodPost, "/graphql/swiss", strings.NewReader(gql))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, req)
+		if w.Code != http.StatusOK {
+			t.Fatalf("create plz %d: expected 200, got %d — %s", plz, w.Code, w.Body.String())
+		}
+	}
+	createPLZ(8001, "Zürich", true, 9.5, ortZH)
+	createPLZ(8002, "Zürich Enge", true, 8.0, ortZH)
+	createPLZ(3000, "Bern", false, 7.5, ortBern)
+	createPLZ(3001, "Bern Altstadt", true, 6.0, ortBern)
+
+	// ── 4. filter by Int field (eq) → returns matching records ──────────────
+	t.Run("filter_int_eq", func(t *testing.T) {
+		result := gqlQuery(t, handler,
+			`{"query":"{ plz { list(filter: { plz: { eq: 8001 } }) { plz name } } }"}`)
+		list := extractList(t, result, "plz")
+		if len(list) != 1 {
+			t.Fatalf("expected 1 record, got %d", len(list))
+		}
+		if list[0]["name"] != "Zürich" {
+			t.Errorf("name = %v, want Zürich", list[0]["name"])
+		}
+	})
+
+	// ── 5. filter by String field (eq) ──────────────────────────────────────
+	t.Run("filter_string_eq", func(t *testing.T) {
+		result := gqlQuery(t, handler,
+			`{"query":"{ plz { list(filter: { name: { eq: \"Bern\" } }) { plz name } } }"}`)
+		list := extractList(t, result, "plz")
+		if len(list) != 1 {
+			t.Fatalf("expected 1 record, got %d", len(list))
+		}
+		if list[0]["plz"] != float64(3000) {
+			t.Errorf("plz = %v, want 3000", list[0]["plz"])
+		}
+	})
+
+	// ── 6. filter by Boolean field (eq) ─────────────────────────────────────
+	t.Run("filter_boolean_eq", func(t *testing.T) {
+		result := gqlQuery(t, handler,
+			`{"query":"{ plz { list(filter: { active: { eq: false } }) { plz } } }"}`)
+		list := extractList(t, result, "plz")
+		if len(list) != 1 {
+			t.Fatalf("expected 1 record, got %d", len(list))
+		}
+		if list[0]["plz"] != float64(3000) {
+			t.Errorf("plz = %v, want 3000", list[0]["plz"])
+		}
+	})
+
+	// ── 7. filter by Float field (eq) ───────────────────────────────────────
+	t.Run("filter_float_eq", func(t *testing.T) {
+		result := gqlQuery(t, handler,
+			`{"query":"{ plz { list(filter: { score: { eq: 9.5 } }) { plz } } }"}`)
+		list := extractList(t, result, "plz")
+		if len(list) != 1 {
+			t.Fatalf("expected 1 record, got %d", len(list))
+		}
+		if list[0]["plz"] != float64(8001) {
+			t.Errorf("plz = %v, want 8001", list[0]["plz"])
+		}
+	})
+
+	// ── 8. filter by ID field (eq) ──────────────────────────────────────────
+	t.Run("filter_id_eq", func(t *testing.T) {
+		// Get first PLZ record ID
+		allResult := gqlQuery(t, handler, `{"query":"{ plz { list { id plz } } }"}`)
+		allList := extractList(t, allResult, "plz")
+		targetID := allList[0]["id"].(string)
+
+		query := fmt.Sprintf(
+			`{"query":"{ plz { list(filter: { id: { eq: \"%s\" } }) { id plz } } }"}`,
+			targetID,
+		)
+		result := gqlQuery(t, handler, query)
+		list := extractList(t, result, "plz")
+		if len(list) != 1 {
+			t.Fatalf("expected 1 record, got %d", len(list))
+		}
+		if list[0]["id"] != targetID {
+			t.Errorf("id = %v, want %v", list[0]["id"], targetID)
+		}
+	})
+
+	// ── 9. filter with no matches → empty array ─────────────────────────────
+	t.Run("filter_no_matches", func(t *testing.T) {
+		result := gqlQuery(t, handler,
+			`{"query":"{ plz { list(filter: { plz: { eq: 99999 } }) { plz } } }"}`)
+		list := extractList(t, result, "plz")
+		if len(list) != 0 {
+			t.Fatalf("expected 0 records, got %d", len(list))
+		}
+	})
+
+	// ── 10. filter combined with limit/offset ───────────────────────────────
+	t.Run("filter_with_pagination", func(t *testing.T) {
+		// Filter active=true gives 3 records; limit=1, offset=1 returns 1
+		result := gqlQuery(t, handler,
+			`{"query":"{ plz { list(filter: { active: { eq: true } }, limit: 1, offset: 1) { plz } } }"}`)
+		list := extractList(t, result, "plz")
+		if len(list) != 1 {
+			t.Fatalf("expected 1 record, got %d", len(list))
+		}
+	})
+
+	// ── 11. PLZ with nested ortschaft relation ──────────────────────────────
+	t.Run("filter_plz_with_relation", func(t *testing.T) {
+		result := gqlQuery(t, handler,
+			`{"query":"{ plz { list(filter: { plz: { eq: 8001 } }) { plz ortschaft { name } } } }"}`)
+		list := extractList(t, result, "plz")
+		if len(list) != 1 {
+			t.Fatalf("expected 1 record, got %d", len(list))
+		}
+		ort, ok := list[0]["ortschaft"].(map[string]any)
+		if !ok {
+			t.Fatalf("expected ortschaft map, got %T", list[0]["ortschaft"])
+		}
+		if ort["name"] != "Zürich" {
+			t.Errorf("ortschaft.name = %v, want Zürich", ort["name"])
+		}
+	})
+}
+
 type gqlResult struct {
 	Data   map[string]any             `json:"data"`
 	Errors []struct{ Message string } `json:"errors"`

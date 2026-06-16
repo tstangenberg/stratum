@@ -20,6 +20,7 @@ package schema_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -31,7 +32,9 @@ import (
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/wait"
 
+	"github.com/graphql-go/graphql"
 	"github.com/tstangenberg/stratum/internal/plugin"
+	eqfilter "github.com/tstangenberg/stratum/internal/plugin/filter/eq"
 	"github.com/tstangenberg/stratum/internal/plugin/pagination/simple"
 	"github.com/tstangenberg/stratum/internal/plugin/scalar"
 	idscalar "github.com/tstangenberg/stratum/internal/plugin/scalar/id"
@@ -173,7 +176,7 @@ func TestGraphQLResolvers(t *testing.T) {
 	}
 
 	ps := &schema.ParsedSchema{Types: []schema.TypeDef{td}}
-	h, err := schema.BuildHandler(pool, "test", ps, scalars, []plugin.QueryModifier{simple.New()})
+	h, err := schema.BuildHandler(pool, "test", ps, scalars, []plugin.QueryModifier{simple.New()}, nil)
 	if err != nil {
 		t.Fatalf("BuildHandler: %v", err)
 	}
@@ -289,7 +292,7 @@ func TestGraphQLResolvers_NullableField(t *testing.T) {
 	}
 
 	ps := &schema.ParsedSchema{Types: []schema.TypeDef{td}}
-	h, err := schema.BuildHandler(pool, "test", ps, scalars, []plugin.QueryModifier{simple.New()})
+	h, err := schema.BuildHandler(pool, "test", ps, scalars, []plugin.QueryModifier{simple.New()}, nil)
 	if err != nil {
 		t.Fatalf("BuildHandler: %v", err)
 	}
@@ -404,7 +407,7 @@ func TestGraphQLResolvers_Relation(t *testing.T) {
 	}
 
 	ps := &schema.ParsedSchema{Types: []schema.TypeDef{kantonTD, ortTD}}
-	h, err := schema.BuildHandler(pool, "test", ps, scalars, []plugin.QueryModifier{simple.New()})
+	h, err := schema.BuildHandler(pool, "test", ps, scalars, []plugin.QueryModifier{simple.New()}, nil)
 	if err != nil {
 		t.Fatalf("BuildHandler: %v", err)
 	}
@@ -534,7 +537,7 @@ func TestGraphQLResolvers_NullableRelation(t *testing.T) {
 	}
 
 	ps := &schema.ParsedSchema{Types: []schema.TypeDef{parentTD, childTD}}
-	h, err := schema.BuildHandler(pool, "test", ps, scalars, []plugin.QueryModifier{simple.New()})
+	h, err := schema.BuildHandler(pool, "test", ps, scalars, []plugin.QueryModifier{simple.New()}, nil)
 	if err != nil {
 		t.Fatalf("BuildHandler: %v", err)
 	}
@@ -586,7 +589,7 @@ func TestGraphQLResolvers_ClosedPool(t *testing.T) {
 	}
 
 	ps := &schema.ParsedSchema{Types: []schema.TypeDef{td}}
-	h, err := schema.BuildHandler(pool, "test", ps, scalars, []plugin.QueryModifier{simple.New()})
+	h, err := schema.BuildHandler(pool, "test", ps, scalars, []plugin.QueryModifier{simple.New()}, nil)
 	if err != nil {
 		t.Fatalf("BuildHandler: %v", err)
 	}
@@ -626,7 +629,7 @@ func TestGraphQLResolvers_ListPagination(t *testing.T) {
 
 	t.Setenv("STRATUM_PLUGINS_PAGINATION_MAX_LIMIT", "5")
 	ps := &schema.ParsedSchema{Types: []schema.TypeDef{td}}
-	h, err := schema.BuildHandler(pool, "test", ps, scalars, []plugin.QueryModifier{simple.New()})
+	h, err := schema.BuildHandler(pool, "test", ps, scalars, []plugin.QueryModifier{simple.New()}, nil)
 	if err != nil {
 		t.Fatalf("BuildHandler: %v", err)
 	}
@@ -750,4 +753,178 @@ func TestGraphQLResolvers_ListPagination(t *testing.T) {
 			}
 		}
 	})
+}
+
+type brokenFilter struct {
+	gqlType graphql.Output
+}
+
+func (b brokenFilter) Name() string       { return "broken" }
+func (b brokenFilter) ScalarType() string { return "Int" }
+func (b brokenFilter) Operators(_ graphql.Output) graphql.InputObjectConfigFieldMap {
+	return graphql.InputObjectConfigFieldMap{
+		"eq": &graphql.InputObjectFieldConfig{Type: b.gqlType},
+	}
+}
+func (b brokenFilter) ToSQL(string, string, any, int) (string, []any, error) {
+	return "", nil, errors.New("broken filter")
+}
+
+func TestFilterIntegration(t *testing.T) {
+	pool := startPool(t)
+	ctx := context.Background()
+
+	td := schema.TypeDef{
+		Name: "City",
+		Fields: []schema.FieldDef{
+			{Name: "id", Type: "ID", NonNull: true},
+			{Name: "name", Type: "String", NonNull: true},
+			{Name: "pop", Type: "Int", NonNull: true},
+		},
+	}
+	scalars := map[string]scalar.Plugin{
+		"String": stringscalar.Plugin{},
+		"ID":     idscalar.Plugin{},
+		"Int":    intscalar.Plugin{},
+	}
+
+	if err := schema.CreateTable(ctx, pool, "test", td, scalars); err != nil {
+		t.Fatalf("CreateTable: %v", err)
+	}
+
+	filters := []plugin.FilterPlugin{
+		eqfilter.New("String", graphql.String),
+		eqfilter.New("ID", graphql.ID),
+		eqfilter.New("Int", scalars["Int"].GraphQLType()),
+	}
+	ps := &schema.ParsedSchema{Types: []schema.TypeDef{td}}
+	h, err := schema.BuildHandler(pool, "test", ps, scalars, []plugin.QueryModifier{simple.New()}, filters)
+	if err != nil {
+		t.Fatalf("BuildHandler: %v", err)
+	}
+
+	do := func(body string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodPost, "/graphql/test", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, req)
+		return w
+	}
+
+	// Create records
+	do(`{"query":"mutation { city { create(input: {name: \"Zürich\", pop: 400000}) { id } } }"}`)
+	do(`{"query":"mutation { city { create(input: {name: \"Bern\", pop: 130000}) { id } } }"}`)
+	do(`{"query":"mutation { city { create(input: {name: \"Luzern\", pop: 80000}) { id } } }"}`)
+
+	type listResp struct {
+		Data struct {
+			City struct {
+				List []struct {
+					Name string `json:"name"`
+					Pop  int    `json:"pop"`
+				} `json:"list"`
+			} `json:"city"`
+		} `json:"data"`
+		Errors []struct{ Message string } `json:"errors"`
+	}
+
+	t.Run("filter_eq_string", func(t *testing.T) {
+		w := do(`{"query":"{ city { list(filter: { name: { eq: \"Bern\" } }) { name pop } } }"}`)
+		var resp listResp
+		if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		if len(resp.Errors) > 0 {
+			t.Fatalf("errors: %v", resp.Errors)
+		}
+		if len(resp.Data.City.List) != 1 {
+			t.Fatalf("expected 1 record, got %d", len(resp.Data.City.List))
+		}
+		if resp.Data.City.List[0].Name != "Bern" {
+			t.Errorf("name = %q, want Bern", resp.Data.City.List[0].Name)
+		}
+	})
+
+	t.Run("filter_eq_int", func(t *testing.T) {
+		w := do(`{"query":"{ city { list(filter: { pop: { eq: 80000 } }) { name } } }"}`)
+		var resp listResp
+		if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		if len(resp.Errors) > 0 {
+			t.Fatalf("errors: %v", resp.Errors)
+		}
+		if len(resp.Data.City.List) != 1 {
+			t.Fatalf("expected 1 record, got %d", len(resp.Data.City.List))
+		}
+		if resp.Data.City.List[0].Name != "Luzern" {
+			t.Errorf("name = %q, want Luzern", resp.Data.City.List[0].Name)
+		}
+	})
+
+	t.Run("filter_no_match", func(t *testing.T) {
+		w := do(`{"query":"{ city { list(filter: { name: { eq: \"Basel\" } }) { name } } }"}`)
+		var resp listResp
+		if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		if len(resp.Data.City.List) != 0 {
+			t.Fatalf("expected 0 records, got %d", len(resp.Data.City.List))
+		}
+	})
+
+	t.Run("no_filter_returns_all", func(t *testing.T) {
+		w := do(`{"query":"{ city { list { name } } }"}`)
+		var resp listResp
+		if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		if len(resp.Data.City.List) != 3 {
+			t.Fatalf("expected 3 records, got %d", len(resp.Data.City.List))
+		}
+	})
+}
+
+func TestFilterIntegration_BrokenPlugin(t *testing.T) {
+	pool := startPool(t)
+	ctx := context.Background()
+
+	td := schema.TypeDef{
+		Name: "Item",
+		Fields: []schema.FieldDef{
+			{Name: "id", Type: "ID", NonNull: true},
+			{Name: "qty", Type: "Int", NonNull: true},
+		},
+	}
+	scalars := map[string]scalar.Plugin{
+		"ID":  idscalar.Plugin{},
+		"Int": intscalar.Plugin{},
+	}
+
+	if err := schema.CreateTable(ctx, pool, "test", td, scalars); err != nil {
+		t.Fatalf("CreateTable: %v", err)
+	}
+
+	filters := []plugin.FilterPlugin{brokenFilter{gqlType: scalars["Int"].GraphQLType()}}
+	ps := &schema.ParsedSchema{Types: []schema.TypeDef{td}}
+	h, err := schema.BuildHandler(pool, "test", ps, scalars, []plugin.QueryModifier{simple.New()}, filters)
+	if err != nil {
+		t.Fatalf("BuildHandler: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/graphql/test",
+		strings.NewReader(`{"query":"{ item { list(filter: { qty: { eq: 1 } }) { id } } }"}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	var resp struct {
+		Errors []struct{ Message string } `json:"errors"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(resp.Errors) == 0 {
+		t.Fatal("expected GraphQL error from broken filter plugin")
+	}
 }
