@@ -308,7 +308,7 @@ func TestBuildFilterInput_NoFilters(t *testing.T) {
 		Name:   "Widget",
 		Fields: []FieldDef{{Name: "name", Type: "String"}},
 	}
-	got := buildFilterInput(td, nil, map[string]scalar.Plugin{"String": stringscalar.Plugin{}})
+	got := buildFilterInput(td, indexFilterPlugins(nil), map[string]scalar.Plugin{"String": stringscalar.Plugin{}})
 	if got != nil {
 		t.Error("expected nil when no filter plugins registered")
 	}
@@ -324,7 +324,7 @@ func TestBuildFilterInput_SkipsRelations(t *testing.T) {
 	}
 	scalars := map[string]scalar.Plugin{"ID": idscalar.Plugin{}}
 	filters := []plugin.FilterPlugin{eqfilter.New("ID", graphql.ID)}
-	input := buildFilterInput(td, filters, scalars)
+	input := buildFilterInput(td, indexFilterPlugins(filters), scalars)
 	if input == nil {
 		t.Fatal("expected non-nil filter input")
 	}
@@ -356,7 +356,7 @@ func TestBuildFilterInput_WithFilters(t *testing.T) {
 		eqfilter.New("Int", scalars["Int"].GraphQLType()),
 		eqfilter.New("String", graphql.String),
 	}
-	input := buildFilterInput(td, filters, scalars)
+	input := buildFilterInput(td, indexFilterPlugins(filters), scalars)
 	if input == nil {
 		t.Fatal("expected non-nil filter input")
 	}
@@ -498,7 +498,7 @@ func TestApplyFilters_ErrorFromPlugin(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error from unsupported operator")
 	}
-	if !strings.Contains(err.Error(), "plz.gte") {
+	if !strings.Contains(err.Error(), `"plz"."gte"`) {
 		t.Errorf("error = %q, want it to mention plz.gte", err)
 	}
 }
@@ -511,7 +511,7 @@ func TestBuildFilterInput_EmptyOperators(t *testing.T) {
 	scalars := map[string]scalar.Plugin{"Unknown": stringscalar.Plugin{}}
 	// No filter plugin for "Unknown" type → no filter input
 	filters := []plugin.FilterPlugin{eqfilter.New("String", graphql.String)}
-	got := buildFilterInput(td, filters, scalars)
+	got := buildFilterInput(td, indexFilterPlugins(filters), scalars)
 	if got != nil {
 		t.Error("expected nil filter input when field type has no matching filter plugin")
 	}
@@ -535,7 +535,7 @@ func TestBuildFilterInput_EmptyOperatorsFromPlugin(t *testing.T) {
 	}
 	scalars := map[string]scalar.Plugin{"String": stringscalar.Plugin{}}
 	filters := []plugin.FilterPlugin{emptyOpsFilter{}}
-	got := buildFilterInput(td, filters, scalars)
+	got := buildFilterInput(td, indexFilterPlugins(filters), scalars)
 	if got != nil {
 		t.Error("expected nil filter input when plugin returns empty operators")
 	}

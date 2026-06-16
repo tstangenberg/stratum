@@ -83,6 +83,7 @@ func BuildHandler(db *pgxpool.Pool, schemaName string, ps *ParsedSchema, scalars
 
 	queryFields := graphql.Fields{}
 	mutationFields := graphql.Fields{}
+	filtersByScalar := indexFilterPlugins(filters)
 
 	for _, t := range ps.Types {
 		obj := gqlObjects[t.Name]
@@ -117,12 +118,11 @@ func BuildHandler(db *pgxpool.Pool, schemaName string, ps *ParsedSchema, scalars
 			return nil, err
 		}
 
-		filterInput := buildFilterInput(t, filters, scalars)
+		filterInput := buildFilterInput(t, filtersByScalar, scalars)
 		if filterInput != nil {
 			listArgMap["filter"] = &graphql.ArgumentConfig{Type: filterInput}
 		}
 
-		filtersByScalar := indexFilterPlugins(filters)
 		typFields := t.Fields
 		queryNS := graphql.NewObject(graphql.ObjectConfig{
 			Name: t.Name + "Query",
@@ -421,8 +421,7 @@ func createRecord(ctx context.Context, db *pgxpool.Pool, tbl string, fields []Fi
 // buildFilterInput creates the GraphQL filter input type for a domain type.
 // For each scalar field, it creates a nested input object with operators from matching filter plugins.
 // Returns nil if no filterable fields exist.
-func buildFilterInput(t TypeDef, filters []plugin.FilterPlugin, scalars map[string]scalar.Plugin) *graphql.InputObject {
-	filtersByScalar := indexFilterPlugins(filters)
+func buildFilterInput(t TypeDef, filtersByScalar map[string][]plugin.FilterPlugin, scalars map[string]scalar.Plugin) *graphql.InputObject {
 	fields := graphql.InputObjectConfigFieldMap{}
 	for _, f := range t.Fields {
 		if f.IsRelation {
@@ -490,7 +489,7 @@ func applyFilters(args map[string]any, fields []FieldDef, filtersByScalar map[st
 			for _, fp := range fps {
 				clause, newParams, err := fp.ToSQL(f.Name, operator, value, len(params)+1)
 				if err != nil {
-					return nil, nil, fmt.Errorf("filter %s.%s: %w", f.Name, operator, err)
+					return nil, nil, fmt.Errorf("schema: apply filter %q.%q: %w", f.Name, operator, err)
 				}
 				clauses = append(clauses, clause)
 				params = append(params, newParams...)
