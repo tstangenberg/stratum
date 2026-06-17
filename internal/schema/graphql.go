@@ -36,7 +36,7 @@ import (
 // BuildHandler creates an HTTP handler that serves GraphQL for the given schema.
 // It builds a dynamic graphql-go schema with Query (list, get) and Mutation (create) per type.
 // Relation fields are resolved by loading the referenced record from the DB.
-func BuildHandler(db *pgxpool.Pool, schemaName string, ps *ParsedSchema, scalars map[string]scalar.Plugin, modifiers []plugin.QueryModifier, filters []plugin.FilterPlugin) (http.Handler, error) {
+func BuildHandler(db *pgxpool.Pool, schemaName string, ps *ParsedSchema, scalars map[string]scalar.Plugin, modifiers []plugin.QueryModifier, filters []plugin.FilterPlugin, maxDepth int) (http.Handler, error) {
 	intType := graphql.Int
 	if s, ok := scalars["Int"]; ok {
 		intType = s.GraphQLType()
@@ -82,7 +82,7 @@ func BuildHandler(db *pgxpool.Pool, schemaName string, ps *ParsedSchema, scalars
 				}
 				obj.AddFieldConfig(fieldName, &graphql.Field{
 					Type:    relType,
-					Resolve: resolveRelation(db, relTbl, relCols, fkCol),
+					Resolve: resolveRelation(db, relTbl, relCols, fkCol, fieldName),
 				})
 				continue
 			}
@@ -102,6 +102,10 @@ func BuildHandler(db *pgxpool.Pool, schemaName string, ps *ParsedSchema, scalars
 		obj := gqlObjects[t.Name]
 		tbl := tableName(schemaName, t.Name)
 		colNames := columnNames(t)
+
+		seq := 0
+		joinNodes := buildJoinNodes(t, schemaName, typeIndex, "t0", 0, maxDepth, &seq)
+		joinColNames := joinAliasedColNames(joinNodes)
 
 		inputFields := graphql.InputObjectConfigFieldMap{}
 		for _, f := range t.Fields {
@@ -145,6 +149,11 @@ func BuildHandler(db *pgxpool.Pool, schemaName string, ps *ParsedSchema, scalars
 			return nil, err
 		}
 
+		var childSubExprs []string
+		for _, cs := range childSubqueries {
+			childSubExprs = append(childSubExprs, cs.sql)
+		}
+
 		queryNS := graphql.NewObject(graphql.ObjectConfig{
 			Name: t.Name + "Query",
 			Fields: graphql.Fields{
@@ -152,21 +161,21 @@ func BuildHandler(db *pgxpool.Pool, schemaName string, ps *ParsedSchema, scalars
 					Type: graphql.NewNonNull(graphql.NewList(graphql.NewNonNull(obj))),
 					Args: listArgMap,
 					Resolve: func(p graphql.ResolveParams) (any, error) {
-						selectExprs := make([]string, len(colNames))
-						copy(selectExprs, colNames)
-						for _, cs := range childSubqueries {
-							selectExprs = append(selectExprs, cs.sql)
-						}
-						query := fmt.Sprintf("SELECT %s FROM %s", strings.Join(selectExprs, ", "), tbl)
+						query := buildListQueryWithJoins(tbl, colNames, joinNodes, childSubExprs)
 						var params []any
 						whereClauses, params, err := applyFilters(p.Args, typFields, filtersByScalar, params)
 						if err != nil {
 							return nil, err
 						}
 						if len(whereClauses) > 0 {
+							if len(joinNodes) > 0 {
+								for i, c := range whereClauses {
+									whereClauses[i] = "t0." + c
+								}
+							}
 							query += " WHERE " + strings.Join(whereClauses, " AND ")
 						}
-						query += " ORDER BY id"
+						query += " ORDER BY t0.id"
 						for _, mod := range modifiers {
 							query, params, err = mod.ModifyQuery(query, params, p.Args)
 							if err != nil {
@@ -177,7 +186,7 @@ func BuildHandler(db *pgxpool.Pool, schemaName string, ps *ParsedSchema, scalars
 						for _, cs := range childSubqueries {
 							childFields = append(childFields, cs.fieldName)
 						}
-						return listRecordsWithChildren(p.Context, db, query, params, colNames, childFields, tbl)
+						return listRecordsWithJoins(p.Context, db, query, params, colNames, joinColNames, joinNodes, childFields, tbl)
 					},
 				},
 				"get": &graphql.Field{
@@ -186,10 +195,7 @@ func BuildHandler(db *pgxpool.Pool, schemaName string, ps *ParsedSchema, scalars
 						"id": &graphql.ArgumentConfig{Type: graphql.NewNonNull(graphql.ID)},
 					},
 					Resolve: func(p graphql.ResolveParams) (any, error) {
-						rec, err := getRecord(p.Context, db, tbl, colNames, p.Args["id"].(string))
-						// map[string]any(nil) returned into any is a non-nil interface (type set,
-						// value nil); graphql-go would resolve it as an object instead of null.
-						// Return untyped nil explicitly so the field serialises as JSON null.
+						rec, err := getRecordWithJoins(p.Context, db, tbl, colNames, joinNodes, joinColNames, p.Args["id"].(string))
 						if rec == nil {
 							return nil, err
 						}
@@ -240,15 +246,20 @@ func BuildHandler(db *pgxpool.Pool, schemaName string, ps *ParsedSchema, scalars
 	if err != nil {
 		return nil, fmt.Errorf("graphql: build schema: %w", err)
 	}
-	return &gqlHandler{schema: gqlSchema}, nil
+	return &gqlHandler{schema: gqlSchema, maxDepth: maxDepth, typeIndex: typeIndex}, nil
 }
 
 // resolveRelation returns a GraphQL resolver that loads the related record by FK.
-func resolveRelation(db *pgxpool.Pool, relTbl string, relCols []string, fkCol string) graphql.FieldResolveFn {
+// If the relation has already been pre-loaded via LEFT JOIN (present in the source
+// map under fieldName), the pre-loaded value is returned without a DB round-trip.
+func resolveRelation(db *pgxpool.Pool, relTbl string, relCols []string, fkCol string, fieldName string) graphql.FieldResolveFn {
 	return func(p graphql.ResolveParams) (any, error) {
 		src, ok := p.Source.(map[string]any)
 		if !ok {
 			return nil, nil
+		}
+		if preloaded, exists := src[fieldName]; exists {
+			return preloaded, nil
 		}
 		fkID, ok := src[fkCol].(string)
 		if !ok || fkID == "" {
@@ -258,7 +269,11 @@ func resolveRelation(db *pgxpool.Pool, relTbl string, relCols []string, fkCol st
 	}
 }
 
-type gqlHandler struct{ schema graphql.Schema }
+type gqlHandler struct {
+	schema    graphql.Schema
+	maxDepth  int
+	typeIndex map[string]TypeDef
+}
 
 func (h *gqlHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var params struct {
@@ -267,6 +282,15 @@ func (h *gqlHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := json.NewDecoder(r.Body).Decode(&params); err != nil {
 		http.Error(w, "invalid JSON body", http.StatusBadRequest)
+		return
+	}
+	if depth := selectionRelationDepth(params.Query, h.typeIndex); depth > h.maxDepth {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"errors": []map[string]string{
+				{"message": fmt.Sprintf("query depth %d exceeds maximum allowed depth %d", depth, h.maxDepth)},
+			},
+		})
 		return
 	}
 	result := graphql.Do(graphql.Params{
@@ -458,6 +482,85 @@ func createRecord(ctx context.Context, db *pgxpool.Pool, tbl string, fields []Fi
 	return row, nil
 }
 
+// listRecordsWithJoins executes a query with LEFT JOINs and assembles nested relation maps.
+func listRecordsWithJoins(ctx context.Context, db *pgxpool.Pool, query string, params []any, parentCols []string, joinCols []string, nodes []joinNode, childFields []string, tbl string) ([]map[string]any, error) {
+	if len(nodes) == 0 && len(childFields) == 0 {
+		return listRecords(ctx, db, query, params, parentCols, tbl)
+	}
+	if len(nodes) == 0 {
+		return listRecordsWithChildren(ctx, db, query, params, parentCols, childFields, tbl)
+	}
+	rows, err := db.Query(ctx, query, params...)
+	if err != nil {
+		return nil, fmt.Errorf("list %s: %w", tbl, err)
+	}
+	return scanListWithJoins(rows, parentCols, joinCols, nodes, childFields, tbl)
+}
+
+func scanListWithJoins(rows scannable, parentCols []string, joinCols []string, nodes []joinNode, childFields []string, tbl string) ([]map[string]any, error) {
+	defer rows.Close()
+	totalCols := len(parentCols) + len(joinCols) + len(childFields)
+	var result []map[string]any
+	for rows.Next() {
+		vals := make([]any, totalCols)
+		ptrs := make([]any, totalCols)
+		for i := range vals {
+			ptrs[i] = &vals[i]
+		}
+		if err := rows.Scan(ptrs...); err != nil {
+			return nil, fmt.Errorf("list %s: scan: %w", tbl, err)
+		}
+		row := assembleJoinedRows(vals[:len(parentCols)+len(joinCols)], parentCols, joinCols, nodes)
+		childStart := len(parentCols) + len(joinCols)
+		for i, name := range childFields {
+			children, err := parseJSONChildren(vals[childStart+i])
+			if err != nil {
+				return nil, fmt.Errorf("list %s: parse children %q: %w", tbl, name, err)
+			}
+			row[name] = children
+		}
+		result = append(result, row)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if result == nil {
+		result = []map[string]any{}
+	}
+	return result, nil
+}
+
+// getRecordWithJoins fetches a single record by ID with LEFT JOINs for N:1 relations.
+func getRecordWithJoins(ctx context.Context, db *pgxpool.Pool, tbl string, parentCols []string, nodes []joinNode, joinCols []string, id string) (map[string]any, error) {
+	if len(nodes) == 0 {
+		return getRecord(ctx, db, tbl, parentCols, id)
+	}
+	rootAlias := "t0"
+	selectExprs := qualifiedRootCols(rootAlias, parentCols)
+	selectExprs = append(selectExprs, joinSelectExprs(nodes)...)
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("SELECT %s FROM %s %s", strings.Join(selectExprs, ", "), tbl, rootAlias))
+	for _, clause := range joinClauses(nodes) {
+		sb.WriteString(" ")
+		sb.WriteString(clause)
+	}
+	sb.WriteString(fmt.Sprintf(" WHERE %s.id = $1", rootAlias))
+	row := db.QueryRow(ctx, sb.String(), id)
+	totalCols := len(parentCols) + len(joinCols)
+	vals := make([]any, totalCols)
+	ptrs := make([]any, totalCols)
+	for i := range vals {
+		ptrs[i] = &vals[i]
+	}
+	if err := row.Scan(ptrs...); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("get %s id=%s: %w", tbl, id, err)
+	}
+	return assembleJoinedRows(vals, parentCols, joinCols, nodes), nil
+}
+
 // buildFilterInput creates the GraphQL filter input type for a domain type.
 // For each scalar field, it creates a nested input object with operators from matching filter plugins.
 // Returns nil if no filterable fields exist.
@@ -624,9 +727,6 @@ func listChildRecords(ctx context.Context, db childQuerier, childTbl string, chi
 
 // listRecordsWithChildren executes a query that includes json_agg subqueries for 1:N fields.
 func listRecordsWithChildren(ctx context.Context, db *pgxpool.Pool, query string, params []any, parentCols []string, childFields []string, tbl string) ([]map[string]any, error) {
-	if len(childFields) == 0 {
-		return listRecords(ctx, db, query, params, parentCols, tbl)
-	}
 	rows, err := db.Query(ctx, query, params...)
 	if err != nil {
 		return nil, fmt.Errorf("list %s: %w", tbl, err)
