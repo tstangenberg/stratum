@@ -1,6 +1,8 @@
-# ADR-1005: Use Atlas for database migrations
+# ADR-1005: Use Atlas for user table migrations
 
 **Status:** Accepted
+
+> **Scope:** this ADR covers user tables only — tables created from user-supplied SDL (e.g. `myschema_City`). System tables (`stratum_system.*`) are managed by Goose; see ADR-1016.
 
 ## Context and Problem Statement
 

@@ -19,7 +19,7 @@ Depends on US-0058 (job system).
 ## Acceptance Criteria
 
 - [ ] `StoragePlugin` interface defined in `internal/plugin/storage` with `Write`, `Read`, `Delete`
-- [ ] `stratum_job_results` table exists via Atlas migration with `job_id` FK to `stratum_jobs`
+- [ ] `stratum_job_results` table exists in `stratum_system` via a Goose migration (see ADR-1016) with `job_id` FK to `stratum_jobs`
 - [ ] PostgreSQL implementation compresses on `Write` (gzip) and decompresses on `Read`
 - [ ] `result_ref` in the job row is set to the job ID for the PostgreSQL backend
 - [ ] Storage backend is wired into `StratumServer` at startup

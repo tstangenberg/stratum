@@ -16,7 +16,7 @@ Stratum needs a generic async job system to support import, export, and future l
 
 ## Acceptance Criteria
 
-- [ ] `stratum_jobs` table exists in the system schema via Atlas migration
+- [ ] `stratum_jobs` table exists in `stratum_system` via a Goose migration (see ADR-1016)
 - [ ] `JobPlugin` interface is defined in `internal/plugin/job`
 - [ ] Worker pool starts with `StratumServer` and shuts down gracefully on context cancellation
 - [ ] Pool size is configurable via `STRATUM_SERVER_WORKER_POOL_SIZE` (default: 4)
