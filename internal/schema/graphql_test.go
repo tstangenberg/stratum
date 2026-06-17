@@ -115,6 +115,28 @@ func TestBuildHandler_SchemaConstructionError(t *testing.T) {
 	}
 }
 
+func TestBuildHandler_ListRelation_MissingReverseFK(t *testing.T) {
+	ps := &schema.ParsedSchema{
+		Types: []schema.TypeDef{
+			{Name: "Kanton", Fields: []schema.FieldDef{
+				{Name: "id", Type: "ID"},
+				{Name: "ortschaften", Type: "Ortschaft", IsRelation: true, IsList: true},
+			}},
+			{Name: "Ortschaft", Fields: []schema.FieldDef{
+				{Name: "id", Type: "ID"},
+				{Name: "name", Type: "String"},
+			}},
+		},
+	}
+	_, err := schema.BuildHandler(nil, "test", ps, stringScalars(), []plugin.QueryModifier{simple.New()}, nil)
+	if err == nil {
+		t.Fatal("expected error for missing reverse FK")
+	}
+	if !strings.Contains(err.Error(), "no reverse FK") {
+		t.Errorf("error = %q, want to contain %q", err.Error(), "no reverse FK")
+	}
+}
+
 func TestGQLHandler_BadJSON(t *testing.T) {
 	h, err := schema.BuildHandler(nil, "test", locationSchema(), stringScalars(), []plugin.QueryModifier{simple.New()}, nil)
 	if err != nil {

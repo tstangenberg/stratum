@@ -140,7 +140,10 @@ func BuildHandler(db *pgxpool.Pool, schemaName string, ps *ParsedSchema, scalars
 		}
 
 		typFields := t.Fields
-		childSubqueries := buildChildSubqueries(t, schemaName, typeIndex)
+		childSubqueries, err := buildChildSubqueries(t, schemaName, typeIndex)
+		if err != nil {
+			return nil, err
+		}
 
 		queryNS := graphql.NewObject(graphql.ObjectConfig{
 			Name: t.Name + "Query",
@@ -552,7 +555,7 @@ type childSubquery struct {
 }
 
 // buildChildSubqueries builds correlated subqueries for each 1:N list relation on the type.
-func buildChildSubqueries(t TypeDef, schemaName string, typeIndex map[string]TypeDef) []childSubquery {
+func buildChildSubqueries(t TypeDef, schemaName string, typeIndex map[string]TypeDef) ([]childSubquery, error) {
 	var subs []childSubquery
 	parentTbl := tableName(schemaName, t.Name)
 	for i, f := range t.Fields {
@@ -563,6 +566,9 @@ func buildChildSubqueries(t TypeDef, schemaName string, typeIndex map[string]Typ
 		childTbl := tableName(schemaName, f.Type)
 		childCols := columnNames(childType)
 		fkCol := reverseFK(childType, t.Name)
+		if fkCol == "" {
+			return nil, fmt.Errorf("schema: list relation %q on %q: no reverse FK to %q", f.Name, t.Name, f.Type)
+		}
 		alias := fmt.Sprintf("_c%d", i)
 
 		var kvParts []string
@@ -575,7 +581,7 @@ func buildChildSubqueries(t TypeDef, schemaName string, typeIndex map[string]Typ
 		)
 		subs = append(subs, childSubquery{fieldName: f.Name, sql: sub})
 	}
-	return subs
+	return subs, nil
 }
 
 // childQuerier is the interface used by resolveChildren to query child records.

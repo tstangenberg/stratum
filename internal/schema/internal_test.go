@@ -614,7 +614,10 @@ func TestBuildChildSubqueries_NoListRelations(t *testing.T) {
 			{Name: "name", Type: "String"},
 		},
 	}
-	subs := buildChildSubqueries(td, "test", map[string]TypeDef{"Location": td})
+	subs, err := buildChildSubqueries(td, "test", map[string]TypeDef{"Location": td})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	if len(subs) != 0 {
 		t.Errorf("expected 0 subqueries, got %d", len(subs))
 	}
@@ -638,7 +641,10 @@ func TestBuildChildSubqueries_WithListRelation(t *testing.T) {
 		},
 	}
 	typeIndex := map[string]TypeDef{"Kanton": kantonTD, "Ortschaft": ortTD}
-	subs := buildChildSubqueries(kantonTD, "swiss", typeIndex)
+	subs, err := buildChildSubqueries(kantonTD, "swiss", typeIndex)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	if len(subs) != 1 {
 		t.Fatalf("expected 1 subquery, got %d", len(subs))
 	}
@@ -653,6 +659,31 @@ func TestBuildChildSubqueries_WithListRelation(t *testing.T) {
 	}
 	if !strings.Contains(subs[0].sql, "swiss_kanton.id") {
 		t.Error("subquery should reference parent table id")
+	}
+}
+
+func TestBuildChildSubqueries_MissingReverseFK(t *testing.T) {
+	parentTD := TypeDef{
+		Name: "Kanton",
+		Fields: []FieldDef{
+			{Name: "id", Type: "ID"},
+			{Name: "ortschaften", Type: "Ortschaft", IsRelation: true, IsList: true},
+		},
+	}
+	childTD := TypeDef{
+		Name: "Ortschaft",
+		Fields: []FieldDef{
+			{Name: "id", Type: "ID"},
+			{Name: "name", Type: "String"},
+		},
+	}
+	typeIndex := map[string]TypeDef{"Kanton": parentTD, "Ortschaft": childTD}
+	_, err := buildChildSubqueries(parentTD, "test", typeIndex)
+	if err == nil {
+		t.Fatal("expected error for missing reverse FK")
+	}
+	if !strings.Contains(err.Error(), "no reverse FK") {
+		t.Errorf("error = %q, want to contain %q", err.Error(), "no reverse FK")
 	}
 }
 

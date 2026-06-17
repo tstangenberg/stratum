@@ -69,7 +69,7 @@ func ParseSDL(sdl string) (*ParsedSchema, error) {
 			fd.Name = f.Name
 			if f.Type.Elem != nil {
 				fd.Type = f.Type.Elem.NamedType
-				fd.NonNull = f.Type.NonNull
+				fd.NonNull = f.Type.Elem.NonNull
 				fd.IsList = true
 			} else {
 				fd.Type = f.Type.NamedType

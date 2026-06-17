@@ -212,6 +212,9 @@ func TestParseSDL_ListRelation(t *testing.T) {
 	if ortF.Type != "Ortschaft" {
 		t.Errorf("field ortschaften.Type = %q, want %q", ortF.Type, "Ortschaft")
 	}
+	if !ortF.NonNull {
+		t.Error("field ortschaften.NonNull = false, want true (inner element is non-null)")
+	}
 }
 
 func TestParseSDL_ListRelationNotCircular(t *testing.T) {
