@@ -57,6 +57,19 @@ func BuildHandler(db *pgxpool.Pool, schemaName string, ps *ParsedSchema, scalars
 	for _, t := range ps.Types {
 		obj := gqlObjects[t.Name]
 		for _, f := range t.Fields {
+			if f.IsRelation && f.IsList {
+				childObj := gqlObjects[f.Type]
+				childTbl := tableName(schemaName, f.Type)
+				childType := typeIndex[f.Type]
+				childCols := columnNames(childType)
+				fkCol := reverseFK(childType, t.Name)
+				fieldName := f.Name
+				obj.AddFieldConfig(fieldName, &graphql.Field{
+					Type:    graphql.NewNonNull(graphql.NewList(graphql.NewNonNull(childObj))),
+					Resolve: resolveChildren(db, childTbl, childCols, fkCol, fieldName),
+				})
+				continue
+			}
 			if f.IsRelation {
 				relObj := gqlObjects[f.Type]
 				relTbl := tableName(schemaName, f.Type)
@@ -96,6 +109,9 @@ func BuildHandler(db *pgxpool.Pool, schemaName string, ps *ParsedSchema, scalars
 				inputFields["id"] = &graphql.InputObjectFieldConfig{Type: scalars["ID"].GraphQLType()}
 				continue
 			}
+			if f.IsList {
+				continue
+			}
 			if f.IsRelation {
 				inName := fkInputName(f.Name)
 				var ft graphql.Input = graphql.ID
@@ -124,6 +140,11 @@ func BuildHandler(db *pgxpool.Pool, schemaName string, ps *ParsedSchema, scalars
 		}
 
 		typFields := t.Fields
+		childSubqueries, err := buildChildSubqueries(t, schemaName, typeIndex)
+		if err != nil {
+			return nil, err
+		}
+
 		queryNS := graphql.NewObject(graphql.ObjectConfig{
 			Name: t.Name + "Query",
 			Fields: graphql.Fields{
@@ -131,7 +152,12 @@ func BuildHandler(db *pgxpool.Pool, schemaName string, ps *ParsedSchema, scalars
 					Type: graphql.NewNonNull(graphql.NewList(graphql.NewNonNull(obj))),
 					Args: listArgMap,
 					Resolve: func(p graphql.ResolveParams) (any, error) {
-						query := fmt.Sprintf("SELECT %s FROM %s", strings.Join(colNames, ", "), tbl)
+						selectExprs := make([]string, len(colNames))
+						copy(selectExprs, colNames)
+						for _, cs := range childSubqueries {
+							selectExprs = append(selectExprs, cs.sql)
+						}
+						query := fmt.Sprintf("SELECT %s FROM %s", strings.Join(selectExprs, ", "), tbl)
 						var params []any
 						whereClauses, params, err := applyFilters(p.Args, typFields, filtersByScalar, params)
 						if err != nil {
@@ -147,7 +173,11 @@ func BuildHandler(db *pgxpool.Pool, schemaName string, ps *ParsedSchema, scalars
 								return nil, err
 							}
 						}
-						return listRecords(p.Context, db, query, params, colNames, tbl)
+						var childFields []string
+						for _, cs := range childSubqueries {
+							childFields = append(childFields, cs.fieldName)
+						}
+						return listRecordsWithChildren(p.Context, db, query, params, colNames, childFields, tbl)
 					},
 				},
 				"get": &graphql.Field{
@@ -264,9 +294,13 @@ func scalarToGraphQL(f FieldDef, scalars map[string]scalar.Plugin) (graphql.Outp
 
 // columnNames returns the actual PostgreSQL column names for a type's fields.
 // Relation fields are mapped to their FK column name (e.g. kanton → kanton_id).
+// List relation fields are skipped — they have no DB column.
 func columnNames(t TypeDef) []string {
 	var cols []string
 	for _, f := range t.Fields {
+		if f.IsList {
+			continue
+		}
 		if f.IsRelation {
 			cols = append(cols, fkColumnName(f.Name))
 		} else {
@@ -373,6 +407,9 @@ func createRecord(ctx context.Context, db *pgxpool.Pool, tbl string, fields []Fi
 		if f.Name == "id" {
 			continue
 		}
+		if f.IsList {
+			continue
+		}
 		if f.IsRelation {
 			inName := fkInputName(f.Name)
 			val, ok := input[inName]
@@ -402,6 +439,9 @@ func createRecord(ctx context.Context, db *pgxpool.Pool, tbl string, fields []Fi
 	row := map[string]any{"id": id}
 	for _, f := range fields {
 		if f.Name == "id" {
+			continue
+		}
+		if f.IsList {
 			continue
 		}
 		if f.IsRelation {
@@ -496,6 +536,174 @@ func applyFilters(args map[string]any, fields []FieldDef, filtersByScalar map[st
 		}
 	}
 	return clauses, params, nil
+}
+
+// reverseFK finds the FK column on childType that references parentTypeName.
+func reverseFK(childType TypeDef, parentTypeName string) string {
+	for _, f := range childType.Fields {
+		if f.IsRelation && !f.IsList && f.Type == parentTypeName {
+			return fkColumnName(f.Name)
+		}
+	}
+	return ""
+}
+
+// childSubquery holds the SQL subquery expression and the field name for a 1:N list relation.
+type childSubquery struct {
+	fieldName string
+	sql       string
+}
+
+// buildChildSubqueries builds correlated subqueries for each 1:N list relation on the type.
+func buildChildSubqueries(t TypeDef, schemaName string, typeIndex map[string]TypeDef) ([]childSubquery, error) {
+	var subs []childSubquery
+	parentTbl := tableName(schemaName, t.Name)
+	for i, f := range t.Fields {
+		if !f.IsRelation || !f.IsList {
+			continue
+		}
+		childType := typeIndex[f.Type]
+		childTbl := tableName(schemaName, f.Type)
+		childCols := columnNames(childType)
+		fkCol := reverseFK(childType, t.Name)
+		if fkCol == "" {
+			return nil, fmt.Errorf("schema: list relation %q on %q: no reverse FK to %q", f.Name, t.Name, f.Type)
+		}
+		alias := fmt.Sprintf("_c%d", i)
+
+		var kvParts []string
+		for _, cc := range childCols {
+			kvParts = append(kvParts, fmt.Sprintf("'%s', %s.%s", cc, alias, cc))
+		}
+		sub := fmt.Sprintf(
+			"(SELECT COALESCE(json_agg(json_build_object(%s) ORDER BY %s.id), '[]'::json) FROM %s %s WHERE %s.%s = %s.id) AS %s",
+			strings.Join(kvParts, ", "), alias, childTbl, alias, alias, fkCol, parentTbl, f.Name,
+		)
+		subs = append(subs, childSubquery{fieldName: f.Name, sql: sub})
+	}
+	return subs, nil
+}
+
+// childQuerier is the interface used by resolveChildren to query child records.
+type childQuerier interface {
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+}
+
+// resolveChildren returns a resolver for a 1:N list relation field.
+// If the children are already pre-loaded in the source map (from the list query's json_agg),
+// they are returned directly. Otherwise, the children are fetched from the DB.
+func resolveChildren(db childQuerier, childTbl string, childCols []string, fkCol string, fieldName string) graphql.FieldResolveFn {
+	return func(p graphql.ResolveParams) (any, error) {
+		src, ok := p.Source.(map[string]any)
+		if !ok {
+			return []map[string]any{}, nil
+		}
+		if children, ok := src[fieldName]; ok {
+			if children == nil {
+				return []map[string]any{}, nil
+			}
+			return children, nil
+		}
+		parentID, ok := src["id"].(string)
+		if !ok || parentID == "" {
+			return []map[string]any{}, nil
+		}
+		return listChildRecords(p.Context, db, childTbl, childCols, fkCol, parentID)
+	}
+}
+
+func listChildRecords(ctx context.Context, db childQuerier, childTbl string, childCols []string, fkCol string, parentID string) ([]map[string]any, error) {
+	query := fmt.Sprintf("SELECT %s FROM %s WHERE %s = $1 ORDER BY id",
+		strings.Join(childCols, ", "), childTbl, fkCol)
+	rows, err := db.Query(ctx, query, parentID)
+	if err != nil {
+		return nil, fmt.Errorf("list children %s: %w", childTbl, err)
+	}
+	return scanList(rows, childCols, childTbl)
+}
+
+// listRecordsWithChildren executes a query that includes json_agg subqueries for 1:N fields.
+func listRecordsWithChildren(ctx context.Context, db *pgxpool.Pool, query string, params []any, parentCols []string, childFields []string, tbl string) ([]map[string]any, error) {
+	if len(childFields) == 0 {
+		return listRecords(ctx, db, query, params, parentCols, tbl)
+	}
+	rows, err := db.Query(ctx, query, params...)
+	if err != nil {
+		return nil, fmt.Errorf("list %s: %w", tbl, err)
+	}
+	return scanListWithChildren(rows, parentCols, childFields, tbl)
+}
+
+func scanListWithChildren(rows scannable, parentCols []string, childFields []string, tbl string) ([]map[string]any, error) {
+	defer rows.Close()
+	totalCols := len(parentCols) + len(childFields)
+	var result []map[string]any
+	for rows.Next() {
+		vals := make([]any, totalCols)
+		ptrs := make([]any, totalCols)
+		for i := range vals {
+			ptrs[i] = &vals[i]
+		}
+		if err := rows.Scan(ptrs...); err != nil {
+			return nil, fmt.Errorf("list %s: scan: %w", tbl, err)
+		}
+		row := make(map[string]any, totalCols)
+		for i, name := range parentCols {
+			row[name] = vals[i]
+		}
+		for i, name := range childFields {
+			children, err := parseJSONChildren(vals[len(parentCols)+i])
+			if err != nil {
+				return nil, fmt.Errorf("list %s: parse children %q: %w", tbl, name, err)
+			}
+			row[name] = children
+		}
+		result = append(result, row)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if result == nil {
+		result = []map[string]any{}
+	}
+	return result, nil
+}
+
+// parseJSONChildren converts a json_agg result into a Go slice of maps.
+// pgx may return the value as pre-parsed []any or as raw []byte/string.
+func parseJSONChildren(raw any) ([]map[string]any, error) {
+	switch v := raw.(type) {
+	case []any:
+		result := make([]map[string]any, 0, len(v))
+		for _, item := range v {
+			m, ok := item.(map[string]any)
+			if !ok {
+				return nil, fmt.Errorf("schema: expected map in children array, got %T", item)
+			}
+			result = append(result, m)
+		}
+		return result, nil
+	case []byte:
+		var result []map[string]any
+		if err := json.Unmarshal(v, &result); err != nil {
+			return nil, fmt.Errorf("schema: unmarshal children: %w", err)
+		}
+		if result == nil {
+			result = []map[string]any{}
+		}
+		return result, nil
+	case string:
+		var result []map[string]any
+		if err := json.Unmarshal([]byte(v), &result); err != nil {
+			return nil, fmt.Errorf("schema: unmarshal children: %w", err)
+		}
+		if result == nil {
+			result = []map[string]any{}
+		}
+		return result, nil
+	default:
+		return nil, fmt.Errorf("schema: unexpected type %T for JSON children column", raw)
+	}
 }
 
 // newID generates a random UUID v4 string without external dependencies.

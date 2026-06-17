@@ -928,3 +928,193 @@ func TestFilterIntegration_BrokenPlugin(t *testing.T) {
 		t.Fatal("expected GraphQL error from broken filter plugin")
 	}
 }
+
+func TestBuildHandler_OneToManyListTraversal(t *testing.T) {
+	pool := startPool(t)
+	ctx := context.Background()
+
+	kantonTD := schema.TypeDef{
+		Name: "Kanton",
+		Fields: []schema.FieldDef{
+			{Name: "id", Type: "ID", NonNull: true},
+			{Name: "kuerzel", Type: "String", NonNull: true},
+			{Name: "ortschaften", Type: "Ortschaft", IsRelation: true, IsList: true},
+		},
+	}
+	ortTD := schema.TypeDef{
+		Name: "Ortschaft",
+		Fields: []schema.FieldDef{
+			{Name: "id", Type: "ID", NonNull: true},
+			{Name: "name", Type: "String", NonNull: true},
+			{Name: "kanton", Type: "Kanton", IsRelation: true, NonNull: true},
+		},
+	}
+	scalars := schemaScalars()
+
+	if err := schema.CreateTable(ctx, pool, "test", kantonTD, scalars); err != nil {
+		t.Fatalf("CreateTable Kanton: %v", err)
+	}
+	if err := schema.CreateTable(ctx, pool, "test", ortTD, scalars); err != nil {
+		t.Fatalf("CreateTable Ortschaft: %v", err)
+	}
+
+	ps := &schema.ParsedSchema{Types: []schema.TypeDef{ortTD, kantonTD}}
+	h, err := schema.BuildHandler(pool, "test", ps, scalars, []plugin.QueryModifier{simple.New()}, nil)
+	if err != nil {
+		t.Fatalf("BuildHandler: %v", err)
+	}
+
+	doGQL := func(body string) map[string]any {
+		t.Helper()
+		req := httptest.NewRequest(http.MethodPost, "/graphql/test", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, req)
+		var result struct {
+			Data   map[string]any             `json:"data"`
+			Errors []struct{ Message string } `json:"errors"`
+		}
+		if err := json.NewDecoder(w.Body).Decode(&result); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		if len(result.Errors) > 0 {
+			t.Fatalf("unexpected errors: %v", result.Errors)
+		}
+		return result.Data
+	}
+
+	// Create Kantone
+	zhData := doGQL(`{"query":"mutation { kanton { create(input: {kuerzel: \"ZH\"}) { id kuerzel } } }"}`)
+	zhID := zhData["kanton"].(map[string]any)["create"].(map[string]any)["id"].(string)
+	doGQL(`{"query":"mutation { kanton { create(input: {kuerzel: \"BE\"}) { id } } }"}`)
+
+	// Create Ortschaften for ZH
+	doGQL(`{"query":"mutation { ortschaft { create(input: {name: \"Zürich\", kantonId: \"` + zhID + `\"}) { id } } }"}`)
+	doGQL(`{"query":"mutation { ortschaft { create(input: {name: \"Winterthur\", kantonId: \"` + zhID + `\"}) { id } } }"}`)
+
+	// Test list with nested children
+	t.Run("list_with_children", func(t *testing.T) {
+		data := doGQL(`{"query":"{ kanton { list { kuerzel ortschaften { name } } } }"}`)
+		ns := data["kanton"].(map[string]any)
+		list := ns["list"].([]any)
+		if len(list) != 2 {
+			t.Fatalf("expected 2 kantone, got %d", len(list))
+		}
+
+		var zhItem, beItem map[string]any
+		for _, item := range list {
+			m := item.(map[string]any)
+			switch m["kuerzel"] {
+			case "ZH":
+				zhItem = m
+			case "BE":
+				beItem = m
+			}
+		}
+
+		zhOrt := zhItem["ortschaften"].([]any)
+		if len(zhOrt) != 2 {
+			t.Errorf("ZH ortschaften: expected 2, got %d", len(zhOrt))
+		}
+
+		beOrt := beItem["ortschaften"].([]any)
+		if len(beOrt) != 0 {
+			t.Errorf("BE ortschaften: expected empty, got %d", len(beOrt))
+		}
+	})
+
+	// Test get with children resolved via field resolver
+	t.Run("get_with_children", func(t *testing.T) {
+		data := doGQL(`{"query":"{ kanton { get(id: \"` + zhID + `\") { kuerzel ortschaften { name } } } }"}`)
+		ns := data["kanton"].(map[string]any)
+		get := ns["get"].(map[string]any)
+		ort := get["ortschaften"].([]any)
+		if len(ort) != 2 {
+			t.Errorf("expected 2 ortschaften for ZH get, got %d", len(ort))
+		}
+	})
+}
+
+func TestBuildHandler_OneToMany_QueryError(t *testing.T) {
+	pool := startPool(t)
+	ctx := context.Background()
+
+	kantonTD := schema.TypeDef{
+		Name: "Kanton",
+		Fields: []schema.FieldDef{
+			{Name: "id", Type: "ID", NonNull: true},
+			{Name: "kuerzel", Type: "String", NonNull: true},
+			{Name: "ortschaften", Type: "Ortschaft", IsRelation: true, IsList: true},
+		},
+	}
+	ortTD := schema.TypeDef{
+		Name: "Ortschaft",
+		Fields: []schema.FieldDef{
+			{Name: "id", Type: "ID", NonNull: true},
+			{Name: "name", Type: "String", NonNull: true},
+			{Name: "kanton", Type: "Kanton", IsRelation: true, NonNull: true},
+		},
+	}
+	scalars := schemaScalars()
+
+	if err := schema.CreateTable(ctx, pool, "test", kantonTD, scalars); err != nil {
+		t.Fatalf("CreateTable Kanton: %v", err)
+	}
+	if err := schema.CreateTable(ctx, pool, "test", ortTD, scalars); err != nil {
+		t.Fatalf("CreateTable Ortschaft: %v", err)
+	}
+
+	ps := &schema.ParsedSchema{Types: []schema.TypeDef{ortTD, kantonTD}}
+	h, err := schema.BuildHandler(pool, "test", ps, scalars, []plugin.QueryModifier{simple.New()}, nil)
+	if err != nil {
+		t.Fatalf("BuildHandler: %v", err)
+	}
+
+	pool.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/graphql/test",
+		strings.NewReader(`{"query":"{ kanton { list { kuerzel ortschaften { name } } } }"}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	var resp struct {
+		Errors []struct{ Message string } `json:"errors"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(resp.Errors) == 0 {
+		t.Fatal("expected GraphQL error from closed pool")
+	}
+}
+
+func TestCreateTable_SkipsListRelation(t *testing.T) {
+	pool := startPool(t)
+	ctx := context.Background()
+
+	td := schema.TypeDef{
+		Name: "Parent",
+		Fields: []schema.FieldDef{
+			{Name: "id", Type: "ID", NonNull: true},
+			{Name: "name", Type: "String", NonNull: true},
+			{Name: "children", Type: "Child", IsRelation: true, IsList: true},
+		},
+	}
+	scalars := schemaScalars()
+	if err := schema.CreateTable(ctx, pool, "test", td, scalars); err != nil {
+		t.Fatalf("CreateTable: %v", err)
+	}
+
+	var cols int
+	err := pool.QueryRow(ctx,
+		"SELECT count(*) FROM information_schema.columns WHERE table_name = 'test_parent'",
+	).Scan(&cols)
+	if err != nil {
+		t.Fatalf("query columns: %v", err)
+	}
+	// id + name = 2 columns, no column for the list relation
+	if cols != 2 {
+		t.Errorf("expected 2 columns, got %d", cols)
+	}
+}

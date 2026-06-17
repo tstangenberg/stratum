@@ -1,7 +1,7 @@
 ---
 id: US-010
 tags: [data, query, relations]
-status: ready
+status: done
 ---
 
 # US-0010: Traverse a 1:N relation
@@ -16,10 +16,10 @@ status: ready
 
 ## Acceptance Criteria
 
-- [ ] `query { kanton { list { kuerzel ortschaften { name } } } }` returns each Kanton with its nested Ortschaften
-- [ ] The nested list is resolved in a single SQL query (no N+1)
-- [ ] A Kanton with no Ortschaften returns an empty array for `ortschaften`, not an error
-- [ ] `limit`/`offset` on the parent list works correctly; children are not paginated in MVP
+- [x] `query { kanton { list { kuerzel ortschaften { name } } } }` returns each Kanton with its nested Ortschaften
+- [x] The nested list is resolved in a single SQL query (no N+1)
+- [x] A Kanton with no Ortschaften returns an empty array for `ortschaften`, not an error
+- [x] `limit`/`offset` on the parent list works correctly; children are not paginated in MVP
 
 ## E2E Tests
 
