@@ -1,7 +1,7 @@
 ---
 id: US-012
 tags: [auth]
-status: ready
+status: in-progress
 ---
 
 # US-0012: API key authentication
