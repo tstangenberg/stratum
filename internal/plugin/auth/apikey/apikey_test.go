@@ -54,6 +54,14 @@ func TestPriorityInvalidEnvFallsBack(t *testing.T) {
 	}
 }
 
+func TestPriorityNegativeEnvFallsBack(t *testing.T) {
+	t.Setenv("STRATUM_HTTP_MIDDLEWARE_API_KEY_AUTH_PRIORITY", "-1")
+	p := New("secret")
+	if p.Priority() != 100 {
+		t.Fatalf("Priority() = %d, want 100 (default for negative)", p.Priority())
+	}
+}
+
 func TestWrap(t *testing.T) {
 	const key = "my-secret-key"
 	p := New(key)

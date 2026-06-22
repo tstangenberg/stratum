@@ -18,11 +18,18 @@
 package e2e
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/testcontainers/testcontainers-go"
+	"github.com/testcontainers/testcontainers-go/modules/postgres"
+	"github.com/testcontainers/testcontainers-go/wait"
 
 	"github.com/tstangenberg/stratum/internal/plugin/auth/apikey"
 	"github.com/tstangenberg/stratum/internal/server"
@@ -30,9 +37,40 @@ import (
 
 const testAPIKey = "test-secret-key-42"
 
+func startAuthTestServer(t *testing.T) http.Handler {
+	t.Helper()
+	ctx := context.Background()
+
+	pgc, err := postgres.Run(ctx, "postgres:16-alpine",
+		postgres.WithDatabase("stratum"),
+		postgres.WithUsername("stratum"),
+		postgres.WithPassword("stratum"),
+		testcontainers.WithWaitStrategy(
+			wait.ForLog("database system is ready to accept connections").
+				WithOccurrence(2).
+				WithStartupTimeout(30*time.Second),
+		),
+	)
+	if err != nil {
+		t.Fatalf("start postgres: %v", err)
+	}
+	t.Cleanup(func() { _ = pgc.Terminate(ctx) })
+
+	dsn, err := pgc.ConnectionString(ctx, "sslmode=disable")
+	if err != nil {
+		t.Fatalf("connection string: %v", err)
+	}
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		t.Fatalf("connect pool: %v", err)
+	}
+	t.Cleanup(pool.Close)
+
+	return server.Handler(server.NewStratumServer().WithDB(pool).WithMiddlewares(apikey.New(testAPIKey)))
+}
+
 func TestAuthMissingKey(t *testing.T) {
-	srv := server.NewStratumServer().WithMiddlewares(apikey.New(testAPIKey))
-	handler := server.Handler(srv)
+	handler := startAuthTestServer(t)
 
 	endpoints := []struct {
 		method string
@@ -73,24 +111,27 @@ func TestAuthMissingKey(t *testing.T) {
 		})
 	}
 
-	// Health endpoints must be exempt
-	healthPaths := []string{"/api/v1/health/live", "/api/v1/health/ready"}
-	for _, path := range healthPaths {
-		t.Run("exempt "+path, func(t *testing.T) {
-			req := httptest.NewRequest(http.MethodGet, path, nil)
-			w := httptest.NewRecorder()
-			handler.ServeHTTP(w, req)
+	t.Run("exempt /api/v1/health/live", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/health/live", nil)
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, req)
+		if w.Code != http.StatusOK {
+			t.Fatalf("health/live should return 200, got %d", w.Code)
+		}
+	})
 
-			if w.Code == http.StatusUnauthorized {
-				t.Fatalf("health endpoint %s should be exempt from auth, got 401", path)
-			}
-		})
-	}
+	t.Run("exempt /api/v1/health/ready", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/health/ready", nil)
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, req)
+		if w.Code != http.StatusOK && w.Code != http.StatusServiceUnavailable {
+			t.Fatalf("health/ready should return 200 or 503, got %d", w.Code)
+		}
+	})
 }
 
 func TestAuthInvalidKey(t *testing.T) {
-	srv := server.NewStratumServer().WithMiddlewares(apikey.New(testAPIKey))
-	handler := server.Handler(srv)
+	handler := startAuthTestServer(t)
 
 	endpoints := []struct {
 		method string
@@ -132,14 +173,14 @@ func TestAuthInvalidKey(t *testing.T) {
 		})
 	}
 
-	// Valid key should pass through (use a non-DB endpoint to avoid 501)
+	// Use GET /api/v1/schemas (non-exempt, returns 501 = passed auth and hit unimplemented handler)
 	t.Run("valid key passes", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/api/v1/health/live", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/schemas", nil)
 		req.Header.Set("X-API-Key", testAPIKey)
 		w := httptest.NewRecorder()
 		handler.ServeHTTP(w, req)
-		if w.Code != http.StatusOK {
-			t.Fatalf("expected 200 with valid key, got %d", w.Code)
+		if w.Code != http.StatusNotImplemented {
+			t.Fatalf("expected 501 (passed auth, hit unimplemented handler), got %d — body: %s", w.Code, w.Body.String())
 		}
 	})
 }
