@@ -138,7 +138,7 @@ func BuildHandler(db *pgxpool.Pool, schemaName string, ps *ParsedSchema, scalars
 			return nil, err
 		}
 
-		filterInput := buildFilterInput(t, filtersByScalar, scalars)
+		filterInput := buildFilterInput(t, filtersByScalar)
 		if filterInput != nil {
 			listArgMap["filter"] = &graphql.ArgumentConfig{Type: filterInput}
 		}
@@ -508,7 +508,7 @@ func scanListWithJoins(rows scannable, parentCols []string, joinCols []string, n
 		if err := rows.Scan(ptrs...); err != nil {
 			return nil, fmt.Errorf("list %s: scan: %w", tbl, err)
 		}
-		row := assembleJoinedRows(vals[:len(parentCols)+len(joinCols)], parentCols, joinCols, nodes)
+		row := assembleJoinedRows(vals[:len(parentCols)+len(joinCols)], parentCols, nodes)
 		childStart := len(parentCols) + len(joinCols)
 		for i, name := range childFields {
 			children, err := parseJSONChildren(vals[childStart+i])
@@ -547,13 +547,13 @@ func getRecordWithJoins(ctx context.Context, db *pgxpool.Pool, tbl string, paren
 		}
 		return nil, fmt.Errorf("get %s id=%s: %w", tbl, id, err)
 	}
-	return assembleJoinedRows(vals, parentCols, joinCols, nodes), nil
+	return assembleJoinedRows(vals, parentCols, nodes), nil
 }
 
 // buildFilterInput creates the GraphQL filter input type for a domain type.
 // For each scalar field, it creates a nested input object with operators from matching filter plugins.
 // Returns nil if no filterable fields exist.
-func buildFilterInput(t TypeDef, filtersByScalar map[string][]plugin.FilterPlugin, scalars map[string]scalar.Plugin) *graphql.InputObject {
+func buildFilterInput(t TypeDef, filtersByScalar map[string][]plugin.FilterPlugin) *graphql.InputObject {
 	fields := graphql.InputObjectConfigFieldMap{}
 	for _, f := range t.Fields {
 		if f.IsRelation {

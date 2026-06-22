@@ -110,9 +110,9 @@ func joinAliasedColNames(nodes []joinNode) []string {
 }
 
 // assembleJoinedRows converts flat scanned values into nested maps, populating
-// relation fields from the joined columns. parentCols are the root table columns,
-// joinCols are the aliased join column names, and nodes describe the join structure.
-func assembleJoinedRows(vals []any, parentCols []string, joinCols []string, nodes []joinNode) map[string]any {
+// relation fields from the joined columns. parentCols are the root table columns
+// and nodes describe the join structure.
+func assembleJoinedRows(vals []any, parentCols []string, nodes []joinNode) map[string]any {
 	row := make(map[string]any, len(parentCols))
 	for i, name := range parentCols {
 		row[name] = vals[i]
@@ -199,23 +199,23 @@ func selectionRelationDepth(query string) int {
 	for _, f := range doc.Fragments {
 		frags[f.Name] = f.SelectionSet
 	}
-	max := 0
+	depth := 0
 	for _, op := range doc.Operations {
-		if d := selSetDepth(op.SelectionSet, frags); d > max {
-			max = d
+		if d := selSetDepth(op.SelectionSet, frags); d > depth {
+			depth = d
 		}
 	}
-	if max < 3 {
+	if depth < 3 {
 		return 0
 	}
-	return max - 3
+	return depth - 3
 }
 
 // selSetDepth returns the maximum depth of nested Field selections.
 // Only *ast.Field nodes add a level; InlineFragment and FragmentSpread are
 // expanded inline at the current level.
 func selSetDepth(sel ast.SelectionSet, frags map[string]ast.SelectionSet) int {
-	max := 0
+	depth := 0
 	for _, s := range sel {
 		var d int
 		switch v := s.(type) {
@@ -226,11 +226,11 @@ func selSetDepth(sel ast.SelectionSet, frags map[string]ast.SelectionSet) int {
 		case *ast.FragmentSpread:
 			d = selSetDepth(frags[v.Name], frags)
 		}
-		if d > max {
-			max = d
+		if d > depth {
+			depth = d
 		}
 	}
-	return max
+	return depth
 }
 
 // qualifiedRootCols returns column expressions qualified with the root alias.

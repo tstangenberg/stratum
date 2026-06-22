@@ -311,7 +311,7 @@ func TestBuildFilterInput_NoFilters(t *testing.T) {
 		Name:   "Widget",
 		Fields: []FieldDef{{Name: "name", Type: "String"}},
 	}
-	got := buildFilterInput(td, indexFilterPlugins(nil), map[string]scalar.Plugin{"String": stringscalar.Plugin{}})
+	got := buildFilterInput(td, indexFilterPlugins(nil))
 	if got != nil {
 		t.Error("expected nil when no filter plugins registered")
 	}
@@ -325,9 +325,8 @@ func TestBuildFilterInput_SkipsRelations(t *testing.T) {
 			{Name: "kanton", Type: "Kanton", IsRelation: true},
 		},
 	}
-	scalars := map[string]scalar.Plugin{"ID": idscalar.Plugin{}}
 	filters := []plugin.FilterPlugin{eqfilter.New("ID", graphql.ID)}
-	input := buildFilterInput(td, indexFilterPlugins(filters), scalars)
+	input := buildFilterInput(td, indexFilterPlugins(filters))
 	if input == nil {
 		t.Fatal("expected non-nil filter input")
 	}
@@ -359,7 +358,7 @@ func TestBuildFilterInput_WithFilters(t *testing.T) {
 		eqfilter.New("Int", scalars["Int"].GraphQLType()),
 		eqfilter.New("String", graphql.String),
 	}
-	input := buildFilterInput(td, indexFilterPlugins(filters), scalars)
+	input := buildFilterInput(td, indexFilterPlugins(filters))
 	if input == nil {
 		t.Fatal("expected non-nil filter input")
 	}
@@ -511,10 +510,9 @@ func TestBuildFilterInput_EmptyOperators(t *testing.T) {
 		Name:   "Widget",
 		Fields: []FieldDef{{Name: "status", Type: "Unknown"}},
 	}
-	scalars := map[string]scalar.Plugin{"Unknown": stringscalar.Plugin{}}
 	// No filter plugin for "Unknown" type → no filter input
 	filters := []plugin.FilterPlugin{eqfilter.New("String", graphql.String)}
-	got := buildFilterInput(td, indexFilterPlugins(filters), scalars)
+	got := buildFilterInput(td, indexFilterPlugins(filters))
 	if got != nil {
 		t.Error("expected nil filter input when field type has no matching filter plugin")
 	}
@@ -536,9 +534,8 @@ func TestBuildFilterInput_EmptyOperatorsFromPlugin(t *testing.T) {
 		Name:   "Widget",
 		Fields: []FieldDef{{Name: "name", Type: "String"}},
 	}
-	scalars := map[string]scalar.Plugin{"String": stringscalar.Plugin{}}
 	filters := []plugin.FilterPlugin{emptyOpsFilter{}}
-	got := buildFilterInput(td, indexFilterPlugins(filters), scalars)
+	got := buildFilterInput(td, indexFilterPlugins(filters))
 	if got != nil {
 		t.Error("expected nil filter input when plugin returns empty operators")
 	}
@@ -1073,8 +1070,7 @@ func TestAssembleNested_IDNotFirstColumn(t *testing.T) {
 	seq := 0
 	nodes := buildJoinNodes(parent, "test", idx, "t0", 0, 5, &seq)
 
-	parentCols := columnNames(parent)      // ["id", "widget_id"]
-	joinCols := joinAliasedColNames(nodes) // ["j1__label", "j1__id"]
+	parentCols := columnNames(parent) // ["id", "widget_id"]
 
 	// Simulate a real widget row where label IS null but id is non-null ("w1").
 	// The old code would use joinVals[0] (label=nil) as sentinel and discard the row.
@@ -1086,7 +1082,7 @@ func TestAssembleNested_IDNotFirstColumn(t *testing.T) {
 		"w1", // j1__id
 	}
 
-	row := assembleJoinedRows(vals, parentCols, joinCols, nodes)
+	row := assembleJoinedRows(vals, parentCols, nodes)
 	widgetVal, ok := row["widget"]
 	if !ok {
 		t.Fatal("expected widget key to be present")
@@ -1293,13 +1289,12 @@ func TestAssembleJoinedRows_TwoHop(t *testing.T) {
 	seq := 0
 	nodes := buildJoinNodes(plz, "swiss", idx, "t0", 0, 5, &seq)
 	parentCols := []string{"id", "plz", "ortschaft_id"}
-	joinCols := joinAliasedColNames(nodes)
 
 	vals := []any{
 		"plz-1", 8001, "ort-1", // parent cols
 		"ort-1", "Zürich", "kan-1", "kan-1", "ZH", // join cols
 	}
-	row := assembleJoinedRows(vals, parentCols, joinCols, nodes)
+	row := assembleJoinedRows(vals, parentCols, nodes)
 	if row["id"] != "plz-1" {
 		t.Errorf("id = %v, want plz-1", row["id"])
 	}
@@ -1347,14 +1342,13 @@ func TestAssembleJoinedRows_NullIntermediate(t *testing.T) {
 	seq := 0
 	nodes := buildJoinNodes(plzTD, "swiss", idx, "t0", 0, 5, &seq)
 	parentCols := []string{"id", "plz", "ortschaft_id"}
-	joinCols := joinAliasedColNames(nodes)
 
 	// All join columns are nil (no ortschaft)
 	vals := []any{
 		"plz-1", 9999, nil,
 		nil, nil, nil, nil, nil,
 	}
-	row := assembleJoinedRows(vals, parentCols, joinCols, nodes)
+	row := assembleJoinedRows(vals, parentCols, nodes)
 	if row["ortschaft"] != nil {
 		t.Errorf("ortschaft = %v, want nil", row["ortschaft"])
 	}
@@ -1376,6 +1370,8 @@ func TestSelectionRelationDepth(t *testing.T) {
 		{"string literal } does not deflate depth", `{ entity { list(filter: { code: { eq: "}" } }) { rel { subrel { x } } } } }`, 2},
 		// String literal { inflates raw brace count, causing false rejection (false-positive fix)
 		{"string literal { does not inflate depth", `{ plz { list(filter: { code: { eq: "{" } }) { plz } } } }`, 0},
+		// Inline fragment: must not add a level itself, but fields inside still count (depth-bypass fix)
+		{"inline fragment two hops", `{ plz { list { ... on PLZ { ortschaft { name kanton { kuerzel } } } } } }`, 2},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
