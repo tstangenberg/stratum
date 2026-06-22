@@ -71,7 +71,7 @@ func resolveConfigPath() (string, error) {
 
 func expand(node map[string]any, prefix string) {
 	for key, val := range node {
-		envKey := prefix + "_" + strings.ToUpper(key)
+		envKey := prefix + "_" + strings.ToUpper(strings.ReplaceAll(key, "-", "_"))
 		switch v := val.(type) {
 		case map[string]any:
 			expand(v, envKey)

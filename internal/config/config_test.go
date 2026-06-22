@@ -221,3 +221,25 @@ func TestLoad_UnreadableFile(t *testing.T) {
 		t.Fatal("Load() should return error for unreadable file")
 	}
 }
+
+func TestLoad_HyphensInKeysConvertedToUnderscores(t *testing.T) {
+	dir := t.TempDir()
+	yaml := filepath.Join(dir, "stratum.yaml")
+	content := "http-middleware:\n  api-key-auth:\n    priority: \"100\"\n"
+	if err := os.WriteFile(yaml, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	os.Unsetenv("STRATUM_HTTP_MIDDLEWARE_API_KEY_AUTH_PRIORITY")
+	t.Cleanup(func() { os.Unsetenv("STRATUM_HTTP_MIDDLEWARE_API_KEY_AUTH_PRIORITY") })
+	t.Setenv("STRATUM_CONFIG", yaml)
+
+	if err := Load(); err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+
+	got := os.Getenv("STRATUM_HTTP_MIDDLEWARE_API_KEY_AUTH_PRIORITY")
+	if got != "100" {
+		t.Errorf("STRATUM_HTTP_MIDDLEWARE_API_KEY_AUTH_PRIORITY = %q, want %q", got, "100")
+	}
+}
