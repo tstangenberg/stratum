@@ -1,7 +1,7 @@
 ---
 id: US-011
 tags: [data, query, relations]
-status: ready
+status: done
 ---
 
 # US-0011: Traverse a N:1 relation chain
@@ -16,10 +16,10 @@ Each N:1 hop adds a `LEFT JOIN` to the SQL query. Multiple hops chain LEFT JOINs
 
 ## Acceptance Criteria
 
-- [ ] `query { plz { list { plz ortschaft { name kanton { kuerzel } } } } }` returns each PLZ with its Ortschaft and that Ortschaft's Kanton
-- [ ] The full chain is resolved in a single SQL query using LEFT JOINs
-- [ ] A missing intermediate relation (nullable N:1) returns `null` for that field, not an error
-- [ ] Queries exceeding `max_depth` return a GraphQL error
+- [x] `query { plz { list { plz ortschaft { name kanton { kuerzel } } } } }` returns each PLZ with its Ortschaft and that Ortschaft's Kanton
+- [x] The full chain is resolved in a single SQL query using LEFT JOINs
+- [x] A missing intermediate relation (nullable N:1) returns `null` for that field, not an error
+- [x] Queries exceeding `max_depth` return a GraphQL error
 
 ## E2E Tests
 

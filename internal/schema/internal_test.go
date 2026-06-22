@@ -19,7 +19,9 @@ package schema
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"net/http/httptest"
 	"regexp"
 	"strings"
 	"testing"
@@ -237,7 +239,7 @@ func TestTopoSort_CircularReference(t *testing.T) {
 }
 
 func TestResolveRelation_NonMapSource(t *testing.T) {
-	resolver := resolveRelation(nil, "tbl", []string{"id"}, "fk_id")
+	resolver := resolveRelation(nil, "tbl", []string{"id"}, "fk_id", "fk")
 	p := graphql.ResolveParams{Source: "not-a-map"}
 	got, err := resolver(p)
 	if err != nil {
@@ -249,7 +251,7 @@ func TestResolveRelation_NonMapSource(t *testing.T) {
 }
 
 func TestResolveRelation_MissingFK(t *testing.T) {
-	resolver := resolveRelation(nil, "tbl", []string{"id"}, "fk_id")
+	resolver := resolveRelation(nil, "tbl", []string{"id"}, "fk_id", "fk")
 	p := graphql.ResolveParams{Source: map[string]any{"id": "x"}}
 	got, err := resolver(p)
 	if err != nil {
@@ -261,7 +263,7 @@ func TestResolveRelation_MissingFK(t *testing.T) {
 }
 
 func TestResolveRelation_EmptyFK(t *testing.T) {
-	resolver := resolveRelation(nil, "tbl", []string{"id"}, "fk_id")
+	resolver := resolveRelation(nil, "tbl", []string{"id"}, "fk_id", "fk")
 	p := graphql.ResolveParams{Source: map[string]any{"fk_id": ""}}
 	got, err := resolver(p)
 	if err != nil {
@@ -372,7 +374,7 @@ func TestBuildFilterInput_WithFilters(t *testing.T) {
 func TestApplyFilters_NoFilter(t *testing.T) {
 	fields := []FieldDef{{Name: "id", Type: "ID"}}
 	idx := indexFilterPlugins(nil)
-	clauses, params, err := applyFilters(map[string]any{}, fields, idx, nil)
+	clauses, params, err := applyFilters(map[string]any{}, fields, idx, nil, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -400,7 +402,7 @@ func TestApplyFilters_EqFilter(t *testing.T) {
 			"plz": map[string]any{"eq": 8001},
 		},
 	}
-	clauses, params, err := applyFilters(args, fields, idx, nil)
+	clauses, params, err := applyFilters(args, fields, idx, nil, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -431,7 +433,7 @@ func TestApplyFilters_MultipleFields(t *testing.T) {
 			"name": map[string]any{"eq": "Zürich"},
 		},
 	}
-	clauses, params, err := applyFilters(args, fields, idx, nil)
+	clauses, params, err := applyFilters(args, fields, idx, nil, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -452,7 +454,7 @@ func TestApplyFilters_NilValue(t *testing.T) {
 			"plz": map[string]any{"eq": nil},
 		},
 	}
-	clauses, _, err := applyFilters(args, fields, idx, nil)
+	clauses, _, err := applyFilters(args, fields, idx, nil, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -471,7 +473,7 @@ func TestApplyFilters_WithExistingParams(t *testing.T) {
 		},
 	}
 	existingParams := []any{"existing"}
-	clauses, params, err := applyFilters(args, fields, idx, existingParams)
+	clauses, params, err := applyFilters(args, fields, idx, existingParams, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -495,7 +497,7 @@ func TestApplyFilters_ErrorFromPlugin(t *testing.T) {
 			"plz": map[string]any{"gte": 100},
 		},
 	}
-	_, _, err := applyFilters(args, fields, idx, nil)
+	_, _, err := applyFilters(args, fields, idx, nil, "")
 	if err == nil {
 		t.Fatal("expected error from unsupported operator")
 	}
@@ -614,7 +616,7 @@ func TestBuildChildSubqueries_NoListRelations(t *testing.T) {
 			{Name: "name", Type: "String"},
 		},
 	}
-	subs, err := buildChildSubqueries(td, "test", map[string]TypeDef{"Location": td})
+	subs, err := buildChildSubqueries(td, "test", map[string]TypeDef{"Location": td}, "test_location")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -641,7 +643,7 @@ func TestBuildChildSubqueries_WithListRelation(t *testing.T) {
 		},
 	}
 	typeIndex := map[string]TypeDef{"Kanton": kantonTD, "Ortschaft": ortTD}
-	subs, err := buildChildSubqueries(kantonTD, "swiss", typeIndex)
+	subs, err := buildChildSubqueries(kantonTD, "swiss", typeIndex, "t0")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -657,8 +659,8 @@ func TestBuildChildSubqueries_WithListRelation(t *testing.T) {
 	if !strings.Contains(subs[0].sql, "kanton_id") {
 		t.Error("subquery should reference kanton_id FK")
 	}
-	if !strings.Contains(subs[0].sql, "swiss_kanton.id") {
-		t.Error("subquery should reference parent table id")
+	if !strings.Contains(subs[0].sql, "t0.id") {
+		t.Error("subquery should reference parent alias")
 	}
 }
 
@@ -678,7 +680,7 @@ func TestBuildChildSubqueries_MissingReverseFK(t *testing.T) {
 		},
 	}
 	typeIndex := map[string]TypeDef{"Kanton": parentTD, "Ortschaft": childTD}
-	_, err := buildChildSubqueries(parentTD, "test", typeIndex)
+	_, err := buildChildSubqueries(parentTD, "test", typeIndex, "test_kanton")
 	if err == nil {
 		t.Fatal("expected error for missing reverse FK")
 	}
@@ -1009,6 +1011,27 @@ func TestResolveChildren_FallbackToDB_Error(t *testing.T) {
 	}
 }
 
+func TestApplyFilters_WithTableAlias(t *testing.T) {
+	fields := []FieldDef{{Name: "name", Type: "String"}}
+	filters := []plugin.FilterPlugin{eqfilter.New("String", graphql.String)}
+	idx := indexFilterPlugins(filters)
+	args := map[string]any{
+		"filter": map[string]any{
+			"name": map[string]any{"eq": "Zürich"},
+		},
+	}
+	clauses, _, err := applyFilters(args, fields, idx, nil, "t0")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(clauses) != 1 {
+		t.Fatalf("expected 1 clause, got %d", len(clauses))
+	}
+	if clauses[0] != "t0.name = $1" {
+		t.Errorf("clause = %q, want %q", clauses[0], "t0.name = $1")
+	}
+}
+
 func TestApplyFilters_SkipsRelationFields(t *testing.T) {
 	fields := []FieldDef{
 		{Name: "kanton", Type: "Kanton", IsRelation: true},
@@ -1021,11 +1044,597 @@ func TestApplyFilters_SkipsRelationFields(t *testing.T) {
 			"kanton": map[string]any{"eq": "ZH"},
 		},
 	}
-	clauses, _, err := applyFilters(args, fields, idx, nil)
+	clauses, _, err := applyFilters(args, fields, idx, nil, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if len(clauses) != 0 {
 		t.Errorf("expected 0 clauses for relation field, got %d", len(clauses))
+	}
+}
+
+func TestAssembleNested_IDNotFirstColumn(t *testing.T) {
+	// A type where id is NOT the first field — verifies the null sentinel uses id, not position 0.
+	widget := TypeDef{
+		Name: "Widget",
+		Fields: []FieldDef{
+			{Name: "label", Type: "String", NonNull: false}, // nullable, comes first
+			{Name: "id", Type: "ID", NonNull: true},
+		},
+	}
+	parent := TypeDef{
+		Name: "Parent",
+		Fields: []FieldDef{
+			{Name: "id", Type: "ID", NonNull: true},
+			{Name: "widget", Type: "Widget", IsRelation: true, NonNull: true},
+		},
+	}
+	idx := map[string]TypeDef{"Widget": widget, "Parent": parent}
+	seq := 0
+	nodes := buildJoinNodes(parent, "test", idx, "t0", 0, 5, &seq)
+
+	parentCols := columnNames(parent)      // ["id", "widget_id"]
+	joinCols := joinAliasedColNames(nodes) // ["j1__label", "j1__id"]
+
+	// Simulate a real widget row where label IS null but id is non-null ("w1").
+	// The old code would use joinVals[0] (label=nil) as sentinel and discard the row.
+	// The fixed code uses the "id" column explicitly and sees id="w1", so keeps the row.
+	vals := []any{
+		"p1", // parent id
+		"w1", // widget_id (FK)
+		nil,  // j1__label (nullable — this widget has no label)
+		"w1", // j1__id
+	}
+
+	row := assembleJoinedRows(vals, parentCols, joinCols, nodes)
+	widgetVal, ok := row["widget"]
+	if !ok {
+		t.Fatal("expected widget key to be present")
+	}
+	if widgetVal == nil {
+		t.Fatal("expected widget to be non-nil (label=nil is not a missing row), but got nil")
+	}
+	widgetMap, ok := widgetVal.(map[string]any)
+	if !ok {
+		t.Fatalf("expected widget to be map[string]any, got %T", widgetVal)
+	}
+	if widgetMap["id"] != "w1" {
+		t.Errorf("widget.id = %v, want w1", widgetMap["id"])
+	}
+}
+
+// ── Join plan tests ─────────────────────────────────────────────────────────
+
+func plzOrtschaftKantonTypes() (TypeDef, TypeDef, TypeDef, map[string]TypeDef) {
+	kanton := TypeDef{
+		Name: "Kanton",
+		Fields: []FieldDef{
+			{Name: "id", Type: "ID", NonNull: true},
+			{Name: "kuerzel", Type: "String", NonNull: true},
+		},
+	}
+	ortschaft := TypeDef{
+		Name: "Ortschaft",
+		Fields: []FieldDef{
+			{Name: "id", Type: "ID", NonNull: true},
+			{Name: "name", Type: "String", NonNull: true},
+			{Name: "kanton", Type: "Kanton", IsRelation: true, NonNull: true},
+		},
+	}
+	plz := TypeDef{
+		Name: "PLZ",
+		Fields: []FieldDef{
+			{Name: "id", Type: "ID", NonNull: true},
+			{Name: "plz", Type: "Int", NonNull: true},
+			{Name: "ortschaft", Type: "Ortschaft", IsRelation: true, NonNull: true},
+		},
+	}
+	idx := map[string]TypeDef{"Kanton": kanton, "Ortschaft": ortschaft, "PLZ": plz}
+	return plz, ortschaft, kanton, idx
+}
+
+func TestBuildJoinNodes_TwoHopChain(t *testing.T) {
+	plz, _, _, idx := plzOrtschaftKantonTypes()
+	seq := 0
+	nodes := buildJoinNodes(plz, "swiss", idx, "t0", 0, 5, &seq)
+	if len(nodes) != 1 {
+		t.Fatalf("expected 1 top-level join node, got %d", len(nodes))
+	}
+	ort := nodes[0]
+	if ort.fieldName != "ortschaft" {
+		t.Errorf("fieldName = %q, want ortschaft", ort.fieldName)
+	}
+	if ort.alias != "j1" {
+		t.Errorf("alias = %q, want j1", ort.alias)
+	}
+	if ort.table != "swiss_ortschaft" {
+		t.Errorf("table = %q, want swiss_ortschaft", ort.table)
+	}
+	if ort.fkCol != "ortschaft_id" {
+		t.Errorf("fkCol = %q, want ortschaft_id", ort.fkCol)
+	}
+	if ort.parentAlias != "t0" {
+		t.Errorf("parentAlias = %q, want t0", ort.parentAlias)
+	}
+	if len(ort.children) != 1 {
+		t.Fatalf("expected 1 child join node, got %d", len(ort.children))
+	}
+	kan := ort.children[0]
+	if kan.fieldName != "kanton" {
+		t.Errorf("child fieldName = %q, want kanton", kan.fieldName)
+	}
+	if kan.alias != "j2" {
+		t.Errorf("child alias = %q, want j2", kan.alias)
+	}
+	if kan.table != "swiss_kanton" {
+		t.Errorf("child table = %q, want swiss_kanton", kan.table)
+	}
+	if kan.fkCol != "kanton_id" {
+		t.Errorf("child fkCol = %q, want kanton_id", kan.fkCol)
+	}
+	if kan.parentAlias != "j1" {
+		t.Errorf("child parentAlias = %q, want j1", kan.parentAlias)
+	}
+}
+
+func TestBuildJoinNodes_MaxDepthZero(t *testing.T) {
+	plz, _, _, idx := plzOrtschaftKantonTypes()
+	seq := 0
+	nodes := buildJoinNodes(plz, "swiss", idx, "t0", 0, 0, &seq)
+	if len(nodes) != 0 {
+		t.Errorf("expected 0 nodes at maxDepth=0, got %d", len(nodes))
+	}
+}
+
+func TestBuildJoinNodes_MaxDepthOne(t *testing.T) {
+	plz, _, _, idx := plzOrtschaftKantonTypes()
+	seq := 0
+	nodes := buildJoinNodes(plz, "swiss", idx, "t0", 0, 1, &seq)
+	if len(nodes) != 1 {
+		t.Fatalf("expected 1 node at maxDepth=1, got %d", len(nodes))
+	}
+	if len(nodes[0].children) != 0 {
+		t.Errorf("expected 0 children at maxDepth=1, got %d", len(nodes[0].children))
+	}
+}
+
+func TestBuildJoinNodes_SkipsListRelation(t *testing.T) {
+	td := TypeDef{
+		Name: "Kanton",
+		Fields: []FieldDef{
+			{Name: "id", Type: "ID", NonNull: true},
+			{Name: "ortschaften", Type: "Ortschaft", IsRelation: true, IsList: true},
+		},
+	}
+	idx := map[string]TypeDef{"Kanton": td}
+	seq := 0
+	nodes := buildJoinNodes(td, "swiss", idx, "t0", 0, 5, &seq)
+	if len(nodes) != 0 {
+		t.Errorf("expected 0 nodes for list relation, got %d", len(nodes))
+	}
+}
+
+func TestBuildJoinNodes_NullableRelation(t *testing.T) {
+	td := TypeDef{
+		Name: "PLZ",
+		Fields: []FieldDef{
+			{Name: "id", Type: "ID", NonNull: true},
+			{Name: "ortschaft", Type: "Ortschaft", IsRelation: true, NonNull: false},
+		},
+	}
+	ort := TypeDef{
+		Name: "Ortschaft",
+		Fields: []FieldDef{
+			{Name: "id", Type: "ID", NonNull: true},
+			{Name: "name", Type: "String", NonNull: true},
+		},
+	}
+	idx := map[string]TypeDef{"PLZ": td, "Ortschaft": ort}
+	seq := 0
+	nodes := buildJoinNodes(td, "swiss", idx, "t0", 0, 5, &seq)
+	if len(nodes) != 1 {
+		t.Fatalf("expected 1 node, got %d", len(nodes))
+	}
+	if !nodes[0].nullable {
+		t.Error("expected nullable=true for non-required relation")
+	}
+}
+
+func TestJoinSelectExprs_TwoHop(t *testing.T) {
+	plz, _, _, idx := plzOrtschaftKantonTypes()
+	seq := 0
+	nodes := buildJoinNodes(plz, "swiss", idx, "t0", 0, 5, &seq)
+	exprs := joinSelectExprs(nodes)
+	// Ortschaft has: id, name, kanton_id → 3 exprs
+	// Kanton has: id, kuerzel → 2 exprs
+	if len(exprs) != 5 {
+		t.Fatalf("expected 5 select exprs, got %d: %v", len(exprs), exprs)
+	}
+	if exprs[0] != `j1.id AS "j1__id"` {
+		t.Errorf("exprs[0] = %q, want j1.id AS \"j1__id\"", exprs[0])
+	}
+}
+
+func TestJoinClauses_TwoHop(t *testing.T) {
+	plz, _, _, idx := plzOrtschaftKantonTypes()
+	seq := 0
+	nodes := buildJoinNodes(plz, "swiss", idx, "t0", 0, 5, &seq)
+	clauses := joinClauses(nodes)
+	if len(clauses) != 2 {
+		t.Fatalf("expected 2 join clauses, got %d", len(clauses))
+	}
+	if !strings.Contains(clauses[0], "LEFT JOIN swiss_ortschaft j1") {
+		t.Errorf("clause[0] = %q, want LEFT JOIN swiss_ortschaft j1", clauses[0])
+	}
+	if !strings.Contains(clauses[0], "j1.id = t0.ortschaft_id") {
+		t.Errorf("clause[0] = %q, want ON j1.id = t0.ortschaft_id", clauses[0])
+	}
+	if !strings.Contains(clauses[1], "LEFT JOIN swiss_kanton j2") {
+		t.Errorf("clause[1] = %q, want LEFT JOIN swiss_kanton j2", clauses[1])
+	}
+	if !strings.Contains(clauses[1], "j2.id = j1.kanton_id") {
+		t.Errorf("clause[1] = %q, want ON j2.id = j1.kanton_id", clauses[1])
+	}
+}
+
+func TestTotalJoinCols(t *testing.T) {
+	plz, _, _, idx := plzOrtschaftKantonTypes()
+	seq := 0
+	nodes := buildJoinNodes(plz, "swiss", idx, "t0", 0, 5, &seq)
+	got := totalJoinCols(nodes[0])
+	// ortschaft: id, name, kanton_id (3) + kanton: id, kuerzel (2) = 5
+	if got != 5 {
+		t.Errorf("totalJoinCols = %d, want 5", got)
+	}
+}
+
+func TestAssembleJoinedRows_TwoHop(t *testing.T) {
+	plz, _, _, idx := plzOrtschaftKantonTypes()
+	seq := 0
+	nodes := buildJoinNodes(plz, "swiss", idx, "t0", 0, 5, &seq)
+	parentCols := []string{"id", "plz", "ortschaft_id"}
+	joinCols := joinAliasedColNames(nodes)
+
+	vals := []any{
+		"plz-1", 8001, "ort-1", // parent cols
+		"ort-1", "Zürich", "kan-1", "kan-1", "ZH", // join cols
+	}
+	row := assembleJoinedRows(vals, parentCols, joinCols, nodes)
+	if row["id"] != "plz-1" {
+		t.Errorf("id = %v, want plz-1", row["id"])
+	}
+	ort, ok := row["ortschaft"].(map[string]any)
+	if !ok {
+		t.Fatalf("ortschaft: expected map, got %T", row["ortschaft"])
+	}
+	if ort["name"] != "Zürich" {
+		t.Errorf("ortschaft.name = %v, want Zürich", ort["name"])
+	}
+	kan, ok := ort["kanton"].(map[string]any)
+	if !ok {
+		t.Fatalf("kanton: expected map, got %T", ort["kanton"])
+	}
+	if kan["kuerzel"] != "ZH" {
+		t.Errorf("kanton.kuerzel = %v, want ZH", kan["kuerzel"])
+	}
+}
+
+func TestAssembleJoinedRows_NullIntermediate(t *testing.T) {
+	plzTD := TypeDef{
+		Name: "PLZ",
+		Fields: []FieldDef{
+			{Name: "id", Type: "ID", NonNull: true},
+			{Name: "plz", Type: "Int", NonNull: true},
+			{Name: "ortschaft", Type: "Ortschaft", IsRelation: true, NonNull: false},
+		},
+	}
+	ortTD := TypeDef{
+		Name: "Ortschaft",
+		Fields: []FieldDef{
+			{Name: "id", Type: "ID", NonNull: true},
+			{Name: "name", Type: "String", NonNull: true},
+			{Name: "kanton", Type: "Kanton", IsRelation: true, NonNull: true},
+		},
+	}
+	kantonTD := TypeDef{
+		Name: "Kanton",
+		Fields: []FieldDef{
+			{Name: "id", Type: "ID", NonNull: true},
+			{Name: "kuerzel", Type: "String", NonNull: true},
+		},
+	}
+	idx := map[string]TypeDef{"PLZ": plzTD, "Ortschaft": ortTD, "Kanton": kantonTD}
+	seq := 0
+	nodes := buildJoinNodes(plzTD, "swiss", idx, "t0", 0, 5, &seq)
+	parentCols := []string{"id", "plz", "ortschaft_id"}
+	joinCols := joinAliasedColNames(nodes)
+
+	// All join columns are nil (no ortschaft)
+	vals := []any{
+		"plz-1", 9999, nil,
+		nil, nil, nil, nil, nil,
+	}
+	row := assembleJoinedRows(vals, parentCols, joinCols, nodes)
+	if row["ortschaft"] != nil {
+		t.Errorf("ortschaft = %v, want nil", row["ortschaft"])
+	}
+}
+
+func TestSelectionRelationDepth(t *testing.T) {
+	tests := []struct {
+		name  string
+		query string
+		want  int
+	}{
+		{"no relation", `{ plz { list { plz } } }`, 0},
+		{"one hop", `{ plz { list { plz ortschaft { name } } } }`, 1},
+		{"two hops", `{ plz { list { plz ortschaft { name kanton { kuerzel } } } } }`, 2},
+		{"six hops", `{ g { list { f { e { d { c { b { a { name } } } } } } } } }`, 6},
+		// Named fragment: relation chain inside fragment must count correctly (bypass fix)
+		{"named fragment two hops", `{ plz { list { ...frag } } } fragment frag on PLZ { ortschaft { name kanton { kuerzel } } }`, 2},
+		// String literal } deflates raw brace count, making depth appear shallower than it is (bypass fix)
+		{"string literal } does not deflate depth", `{ entity { list(filter: { code: { eq: "}" } }) { rel { subrel { x } } } } }`, 2},
+		// String literal { inflates raw brace count, causing false rejection (false-positive fix)
+		{"string literal { does not inflate depth", `{ plz { list(filter: { code: { eq: "{" } }) { plz } } } }`, 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := selectionRelationDepth(tt.query)
+			if got != tt.want {
+				t.Errorf("selectionRelationDepth(%q) = %d, want %d", tt.query, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestMaxDepthFromEnv(t *testing.T) {
+	// Default
+	t.Setenv("STRATUM_MAX_DEPTH", "")
+	if got := MaxDepthFromEnv(); got != 5 {
+		t.Errorf("default MaxDepthFromEnv() = %d, want 5", got)
+	}
+
+	// Custom
+	t.Setenv("STRATUM_MAX_DEPTH", "3")
+	if got := MaxDepthFromEnv(); got != 3 {
+		t.Errorf("MaxDepthFromEnv() = %d, want 3", got)
+	}
+
+	// Invalid → default
+	t.Setenv("STRATUM_MAX_DEPTH", "invalid")
+	if got := MaxDepthFromEnv(); got != 5 {
+		t.Errorf("MaxDepthFromEnv(invalid) = %d, want 5", got)
+	}
+
+	// Zero → default
+	t.Setenv("STRATUM_MAX_DEPTH", "0")
+	if got := MaxDepthFromEnv(); got != 5 {
+		t.Errorf("MaxDepthFromEnv(0) = %d, want 5", got)
+	}
+}
+
+func TestBuildListQueryWithJoins(t *testing.T) {
+	plz, _, _, idx := plzOrtschaftKantonTypes()
+	seq := 0
+	nodes := buildJoinNodes(plz, "swiss", idx, "t0", 0, 5, &seq)
+	rootCols := columnNames(plz)
+	query := buildListQueryWithJoins("swiss_plz", rootCols, nodes, nil)
+
+	if !strings.Contains(query, "FROM swiss_plz t0") {
+		t.Errorf("query missing FROM clause: %s", query)
+	}
+	if !strings.Contains(query, "LEFT JOIN swiss_ortschaft j1 ON j1.id = t0.ortschaft_id") {
+		t.Errorf("query missing ortschaft join: %s", query)
+	}
+	if !strings.Contains(query, "LEFT JOIN swiss_kanton j2 ON j2.id = j1.kanton_id") {
+		t.Errorf("query missing kanton join: %s", query)
+	}
+	if !strings.Contains(query, "t0.id") {
+		t.Errorf("query missing qualified root columns: %s", query)
+	}
+}
+
+func TestBuildListQueryWithJoins_WithChildSubqueries(t *testing.T) {
+	plz, _, _, idx := plzOrtschaftKantonTypes()
+	seq := 0
+	nodes := buildJoinNodes(plz, "swiss", idx, "t0", 0, 5, &seq)
+	rootCols := columnNames(plz)
+	childExprs := []string{
+		"(SELECT COALESCE(json_agg(json_build_object('id', _c2.id) ORDER BY _c2.id), '[]'::json) FROM swiss_child _c2 WHERE _c2.plz_id = t0.id) AS children",
+	}
+	query := buildListQueryWithJoins("swiss_plz", rootCols, nodes, childExprs)
+
+	if !strings.Contains(query, "FROM swiss_plz t0") {
+		t.Errorf("query missing FROM clause: %s", query)
+	}
+	if !strings.Contains(query, "LEFT JOIN swiss_ortschaft j1") {
+		t.Errorf("query missing ortschaft join: %s", query)
+	}
+	if !strings.Contains(query, "t0.id) AS children") {
+		t.Errorf("query missing child subquery expression: %s", query)
+	}
+}
+
+func TestResolveRelation_PreLoaded(t *testing.T) {
+	preloaded := map[string]any{"id": "1", "name": "Zürich"}
+	resolver := resolveRelation(nil, "tbl", nil, "ortschaft_id", "ortschaft")
+	p := graphql.ResolveParams{
+		Source: map[string]any{
+			"ortschaft_id": "1",
+			"ortschaft":    preloaded,
+		},
+	}
+	got, err := resolver(p)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	m, ok := got.(map[string]any)
+	if !ok {
+		t.Fatalf("expected map, got %T", got)
+	}
+	if m["name"] != "Zürich" {
+		t.Errorf("name = %v, want Zürich", m["name"])
+	}
+}
+
+func TestResolveRelation_PreLoadedNil(t *testing.T) {
+	resolver := resolveRelation(nil, "tbl", nil, "ortschaft_id", "ortschaft")
+	p := graphql.ResolveParams{
+		Source: map[string]any{
+			"ortschaft_id": nil,
+			"ortschaft":    nil,
+		},
+	}
+	got, err := resolver(p)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != nil {
+		t.Errorf("expected nil, got %v", got)
+	}
+}
+
+// ── scanListWithJoins tests ─────────────────────────────────────────────────
+
+func simpleJoinNodes() []joinNode {
+	return []joinNode{{
+		fieldName:   "rel",
+		alias:       "j1",
+		table:       "t_rel",
+		fkCol:       "rel_id",
+		parentAlias: "t0",
+		cols:        []string{"id", "name"},
+	}}
+}
+
+func TestScanListWithJoins_ScanError(t *testing.T) {
+	scanErr := errors.New("broken scan")
+	rows := &stubRows{nextN: 1, scanErr: scanErr}
+	_, err := scanListWithJoins(rows, []string{"id"}, []string{"j1__id", "j1__name"}, simpleJoinNodes(), nil, "test_t")
+	if err == nil {
+		t.Fatal("expected error from scanListWithJoins")
+	}
+	if !strings.Contains(err.Error(), "scan") {
+		t.Errorf("error = %q, want it to mention scan", err)
+	}
+}
+
+func TestScanListWithJoins_RowsErr(t *testing.T) {
+	rowErr := errors.New("rows iteration error")
+	rows := &stubRowsWithErr{stubRows: stubRows{nextN: 0}, rowErr: rowErr}
+	_, err := scanListWithJoins(rows, []string{"id"}, []string{"j1__id", "j1__name"}, simpleJoinNodes(), nil, "test_t")
+	if err == nil {
+		t.Fatal("expected error from rows.Err()")
+	}
+	if !errors.Is(err, rowErr) {
+		t.Errorf("error = %v, want %v", err, rowErr)
+	}
+}
+
+func TestScanListWithJoins_Empty(t *testing.T) {
+	rows := &stubRows{nextN: 0}
+	result, err := scanListWithJoins(rows, []string{"id"}, []string{"j1__id", "j1__name"}, simpleJoinNodes(), nil, "test_t")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(result) != 0 {
+		t.Errorf("expected empty, got %d", len(result))
+	}
+}
+
+func TestScanListWithJoins_WithChildren(t *testing.T) {
+	nodes := simpleJoinNodes()
+	rows := &scanWithValsRows{
+		nextN: 1,
+		vals: [][]any{
+			{"id1", "rel1", "RelName", []any{map[string]any{"id": "c1"}}},
+		},
+	}
+	result, err := scanListWithJoins(rows, []string{"id"}, []string{"j1__id", "j1__name"}, nodes, []string{"children"}, "test_t")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(result) != 1 {
+		t.Fatalf("expected 1 row, got %d", len(result))
+	}
+	ch, ok := result[0]["children"].([]map[string]any)
+	if !ok {
+		t.Fatalf("children: expected []map[string]any, got %T", result[0]["children"])
+	}
+	if len(ch) != 1 {
+		t.Errorf("expected 1 child, got %d", len(ch))
+	}
+}
+
+func TestScanListWithJoins_ChildrenParseError(t *testing.T) {
+	nodes := simpleJoinNodes()
+	rows := &scanWithValsRows{
+		nextN: 1,
+		vals: [][]any{
+			{"id1", "rel1", "RelName", 42}, // 42 is not parseable
+		},
+	}
+	_, err := scanListWithJoins(rows, []string{"id"}, []string{"j1__id", "j1__name"}, nodes, []string{"children"}, "test_t")
+	if err == nil {
+		t.Fatal("expected error for unparseable children")
+	}
+	if !strings.Contains(err.Error(), "parse children") {
+		t.Errorf("error = %q, want it to mention parse children", err)
+	}
+}
+
+// ── ServeHTTP max_depth test ────────────────────────────────────────────────
+
+func TestGQLHandler_MaxDepthExceeded(t *testing.T) {
+	ps := &ParsedSchema{
+		Types: []TypeDef{{
+			Name: "Location",
+			Fields: []FieldDef{
+				{Name: "id", Type: "ID", NonNull: true},
+				{Name: "name", Type: "String", NonNull: true},
+			},
+		}},
+	}
+	scalars := map[string]scalar.Plugin{
+		"ID":     idscalar.Plugin{},
+		"String": stringscalar.Plugin{},
+	}
+	h, err := BuildHandler(nil, "test", ps, scalars, nil, nil, 1)
+	if err != nil {
+		t.Fatalf("BuildHandler: %v", err)
+	}
+	// depth 2 exceeds maxDepth=1: { location { list { name deep { deeper { x } } } } } = depth 2
+	body := `{"query":"{ location { list { name deep { deeper { x } } } } }"}`
+	req := httptest.NewRequest("POST", "/graphql/test", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	if w.Code != 200 {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	var resp map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	errs, ok := resp["errors"]
+	if !ok {
+		t.Fatal("expected errors in response")
+	}
+	errList, ok := errs.([]any)
+	if !ok || len(errList) == 0 {
+		t.Fatal("expected non-empty errors list")
+	}
+	msg := errList[0].(map[string]any)["message"].(string)
+	if !strings.Contains(msg, "exceeds maximum") {
+		t.Errorf("error message = %q, want it to mention exceeds maximum", msg)
+	}
+}
+
+func TestSelectionRelationDepth_ShallowQuery(t *testing.T) {
+	if got := selectionRelationDepth("{}"); got != 0 {
+		t.Errorf("selectionRelationDepth({}) = %d, want 0", got)
+	}
+	if got := selectionRelationDepth("{ a }"); got != 0 {
+		t.Errorf("selectionRelationDepth({ a }) = %d, want 0", got)
 	}
 }
