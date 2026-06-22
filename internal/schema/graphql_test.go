@@ -70,14 +70,14 @@ func TestBuildHandler_DuplicateModifierArg_ReturnsError(t *testing.T) {
 	_, err := schema.BuildHandler(nil, "test", locationSchema(), stringScalars(), []plugin.QueryModifier{
 		stubModifier{argKey: "limit"},
 		stubModifier{argKey: "limit"},
-	}, nil)
+	}, nil, 5)
 	if err == nil {
 		t.Fatal("expected error for duplicate modifier argument")
 	}
 }
 
 func TestBuildHandler_Success(t *testing.T) {
-	h, err := schema.BuildHandler(nil, "test", locationSchema(), stringScalars(), []plugin.QueryModifier{simple.New()}, nil)
+	h, err := schema.BuildHandler(nil, "test", locationSchema(), stringScalars(), []plugin.QueryModifier{simple.New()}, nil, 5)
 	if err != nil {
 		t.Fatalf("BuildHandler: %v", err)
 	}
@@ -94,7 +94,7 @@ func TestBuildHandler_UnknownScalarInField(t *testing.T) {
 			}},
 		},
 	}
-	_, err := schema.BuildHandler(nil, "test", ps, map[string]scalar.Plugin{}, []plugin.QueryModifier{simple.New()}, nil)
+	_, err := schema.BuildHandler(nil, "test", ps, map[string]scalar.Plugin{}, []plugin.QueryModifier{simple.New()}, nil, 5)
 	if err == nil {
 		t.Fatal("expected error for unknown scalar in field")
 	}
@@ -109,7 +109,7 @@ func TestBuildHandler_SchemaConstructionError(t *testing.T) {
 			}},
 		},
 	}
-	_, err := schema.BuildHandler(nil, "test", ps, stringScalars(), []plugin.QueryModifier{simple.New()}, nil)
+	_, err := schema.BuildHandler(nil, "test", ps, stringScalars(), []plugin.QueryModifier{simple.New()}, nil, 5)
 	if err == nil {
 		t.Fatal("expected error when type name collides with root Query")
 	}
@@ -128,7 +128,7 @@ func TestBuildHandler_ListRelation_MissingReverseFK(t *testing.T) {
 			}},
 		},
 	}
-	_, err := schema.BuildHandler(nil, "test", ps, stringScalars(), []plugin.QueryModifier{simple.New()}, nil)
+	_, err := schema.BuildHandler(nil, "test", ps, stringScalars(), []plugin.QueryModifier{simple.New()}, nil, 5)
 	if err == nil {
 		t.Fatal("expected error for missing reverse FK")
 	}
@@ -138,7 +138,7 @@ func TestBuildHandler_ListRelation_MissingReverseFK(t *testing.T) {
 }
 
 func TestGQLHandler_BadJSON(t *testing.T) {
-	h, err := schema.BuildHandler(nil, "test", locationSchema(), stringScalars(), []plugin.QueryModifier{simple.New()}, nil)
+	h, err := schema.BuildHandler(nil, "test", locationSchema(), stringScalars(), []plugin.QueryModifier{simple.New()}, nil, 5)
 	if err != nil {
 		t.Fatalf("BuildHandler: %v", err)
 	}

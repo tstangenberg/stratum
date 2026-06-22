@@ -685,6 +685,225 @@ func TestTraverseKantonOrtschaft(t *testing.T) {
 	})
 }
 
+func TestTraversePLZOrtschaft(t *testing.T) {
+	ctx := context.Background()
+
+	pgc, err := postgres.Run(ctx, "postgres:16-alpine",
+		postgres.WithDatabase("stratum"),
+		postgres.WithUsername("stratum"),
+		postgres.WithPassword("stratum"),
+		testcontainers.WithWaitStrategy(
+			wait.ForLog("database system is ready to accept connections").
+				WithOccurrence(2).
+				WithStartupTimeout(30*time.Second),
+		),
+	)
+	if err != nil {
+		t.Fatalf("start postgres: %v", err)
+	}
+	t.Cleanup(func() { _ = pgc.Terminate(ctx) })
+
+	dsn, err := pgc.ConnectionString(ctx, "sslmode=disable")
+	if err != nil {
+		t.Fatalf("connection string: %v", err)
+	}
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		t.Fatalf("connect pool: %v", err)
+	}
+	t.Cleanup(pool.Close)
+
+	handler := server.Handler(server.NewStratumServer().WithDB(pool))
+
+	// ── 1. Upload schema: PLZ → Ortschaft → Kanton (2-hop N:1 chain) ───────
+	sdl := `
+		type Kanton {
+			id: ID!
+			kuerzel: String!
+		}
+		type Ortschaft {
+			id: ID!
+			name: String!
+			kanton: Kanton!
+		}
+		type PLZ {
+			id: ID!
+			plz: Int!
+			ortschaft: Ortschaft!
+		}
+	`
+	body, _ := json.Marshal(api.SchemaUploadRequest{Sdl: sdl})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/schemas/swiss",
+		bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("upload schema: expected 200, got %d — %s", w.Code, w.Body.String())
+	}
+
+	// ── 2. Create Kantone ───────────────────────────────────────────────────
+	zhResult := gqlQuery(t, handler,
+		`{"query":"mutation { kanton { create(input: {kuerzel: \"ZH\"}) { id } } }"}`)
+	if len(zhResult.Errors) > 0 {
+		t.Fatalf("create ZH: %v", zhResult.Errors)
+	}
+	zhID := zhResult.Data["kanton"].(map[string]any)["create"].(map[string]any)["id"].(string)
+
+	beResult := gqlQuery(t, handler,
+		`{"query":"mutation { kanton { create(input: {kuerzel: \"BE\"}) { id } } }"}`)
+	if len(beResult.Errors) > 0 {
+		t.Fatalf("create BE: %v", beResult.Errors)
+	}
+	beID := beResult.Data["kanton"].(map[string]any)["create"].(map[string]any)["id"].(string)
+
+	// ── 3. Create Ortschaften ───────────────────────────────────────────────
+	ortZHResult := gqlQuery(t, handler, fmt.Sprintf(
+		`{"query":"mutation { ortschaft { create(input: {name: \"Zürich\", kantonId: \"%s\"}) { id } } }"}`, zhID))
+	if len(ortZHResult.Errors) > 0 {
+		t.Fatalf("create ortschaft ZH: %v", ortZHResult.Errors)
+	}
+	ortZHID := ortZHResult.Data["ortschaft"].(map[string]any)["create"].(map[string]any)["id"].(string)
+
+	ortBEResult := gqlQuery(t, handler, fmt.Sprintf(
+		`{"query":"mutation { ortschaft { create(input: {name: \"Bern\", kantonId: \"%s\"}) { id } } }"}`, beID))
+	if len(ortBEResult.Errors) > 0 {
+		t.Fatalf("create ortschaft BE: %v", ortBEResult.Errors)
+	}
+	ortBEID := ortBEResult.Data["ortschaft"].(map[string]any)["create"].(map[string]any)["id"].(string)
+
+	// ── 4. Create PLZ records ───────────────────────────────────────────────
+	createPLZ := func(plz int, ortID string) {
+		gql := fmt.Sprintf(
+			`{"query":"mutation { plz { create(input: {plz: %d, ortschaftId: \"%s\"}) { id } } }"}`,
+			plz, ortID,
+		)
+		result := gqlQuery(t, handler, gql)
+		if len(result.Errors) > 0 {
+			t.Fatalf("create PLZ %d: %v", plz, result.Errors)
+		}
+	}
+	createPLZ(8001, ortZHID)
+	createPLZ(3000, ortBEID)
+
+	// ── AC-1: 2-hop chain PLZ → Ortschaft → Kanton ─────────────────────────
+	t.Run("two_hop_chain", func(t *testing.T) {
+		result := gqlQuery(t, handler,
+			`{"query":"{ plz { list { plz ortschaft { name kanton { kuerzel } } } } }"}`)
+		list := extractList(t, result, "plz")
+		if len(list) != 2 {
+			t.Fatalf("expected 2 PLZ records, got %d", len(list))
+		}
+		for _, rec := range list {
+			ort, ok := rec["ortschaft"].(map[string]any)
+			if !ok {
+				t.Fatalf("expected ortschaft map, got %T", rec["ortschaft"])
+			}
+			kan, ok := ort["kanton"].(map[string]any)
+			if !ok {
+				t.Fatalf("expected kanton map, got %T", ort["kanton"])
+			}
+			plz := rec["plz"]
+			switch plz {
+			case float64(8001):
+				if ort["name"] != "Zürich" {
+					t.Errorf("8001 ortschaft.name = %v, want Zürich", ort["name"])
+				}
+				if kan["kuerzel"] != "ZH" {
+					t.Errorf("8001 kanton.kuerzel = %v, want ZH", kan["kuerzel"])
+				}
+			case float64(3000):
+				if ort["name"] != "Bern" {
+					t.Errorf("3000 ortschaft.name = %v, want Bern", ort["name"])
+				}
+				if kan["kuerzel"] != "BE" {
+					t.Errorf("3000 kanton.kuerzel = %v, want BE", kan["kuerzel"])
+				}
+			default:
+				t.Errorf("unexpected plz %v", plz)
+			}
+		}
+	})
+
+	// ── AC-3: nullable intermediate returns null ────────────────────────────
+	t.Run("nullable_intermediate_returns_null", func(t *testing.T) {
+		// Upload a schema with nullable ortschaft
+		sdlNullable := `
+			type Kanton {
+				id: ID!
+				kuerzel: String!
+			}
+			type Ortschaft {
+				id: ID!
+				name: String!
+				kanton: Kanton!
+			}
+			type PLZ {
+				id: ID!
+				plz: Int!
+				ortschaft: Ortschaft
+			}
+		`
+		body2, _ := json.Marshal(api.SchemaUploadRequest{Sdl: sdlNullable})
+		req2 := httptest.NewRequest(http.MethodPost, "/api/v1/schemas/nullable",
+			bytes.NewReader(body2))
+		req2.Header.Set("Content-Type", "application/json")
+		w2 := httptest.NewRecorder()
+		handler.ServeHTTP(w2, req2)
+		if w2.Code != http.StatusOK {
+			t.Fatalf("upload nullable schema: expected 200, got %d — %s", w2.Code, w2.Body.String())
+		}
+
+		// Create a PLZ without ortschaft
+		result := gqlQuerySchema(t, handler, "nullable",
+			`{"query":"mutation { plz { create(input: {plz: 9999}) { id } } }"}`)
+		if len(result.Errors) > 0 {
+			t.Fatalf("create PLZ 9999: %v", result.Errors)
+		}
+
+		// Query the chain — ortschaft should be null, not an error
+		result = gqlQuerySchema(t, handler, "nullable",
+			`{"query":"{ plz { list { plz ortschaft { name kanton { kuerzel } } } } }"}`)
+		list := extractList(t, result, "plz")
+		if len(list) != 1 {
+			t.Fatalf("expected 1 record, got %d", len(list))
+		}
+		if list[0]["ortschaft"] != nil {
+			t.Errorf("expected ortschaft to be null, got %v", list[0]["ortschaft"])
+		}
+	})
+
+	// ── AC-4: max_depth exceeded returns GraphQL error ──────────────────────
+	t.Run("max_depth_exceeded", func(t *testing.T) {
+		// Default max_depth is 5. Create a schema with a chain deeper than 5.
+		deepSDL := `
+			type A { id: ID! name: String! }
+			type B { id: ID! a: A! }
+			type C { id: ID! b: B! }
+			type D { id: ID! c: C! }
+			type E { id: ID! d: D! }
+			type F { id: ID! e: E! }
+			type G { id: ID! f: F! }
+		`
+		body3, _ := json.Marshal(api.SchemaUploadRequest{Sdl: deepSDL})
+		req3 := httptest.NewRequest(http.MethodPost, "/api/v1/schemas/deep",
+			bytes.NewReader(body3))
+		req3.Header.Set("Content-Type", "application/json")
+		w3 := httptest.NewRecorder()
+		handler.ServeHTTP(w3, req3)
+		if w3.Code != http.StatusOK {
+			t.Fatalf("upload deep schema: expected 200, got %d — %s", w3.Code, w3.Body.String())
+		}
+
+		// Query exceeding max_depth (6 hops: G → F → E → D → C → B → A)
+		result := gqlQuerySchema(t, handler, "deep",
+			`{"query":"{ g { list { f { e { d { c { b { a { name } } } } } } } } }"}`)
+		if len(result.Errors) == 0 {
+			t.Fatal("expected GraphQL error for depth exceeding max_depth, got none")
+		}
+	})
+}
+
 type gqlResult struct {
 	Data   map[string]any             `json:"data"`
 	Errors []struct{ Message string } `json:"errors"`
