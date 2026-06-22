@@ -374,7 +374,7 @@ func TestBuildFilterInput_WithFilters(t *testing.T) {
 func TestApplyFilters_NoFilter(t *testing.T) {
 	fields := []FieldDef{{Name: "id", Type: "ID"}}
 	idx := indexFilterPlugins(nil)
-	clauses, params, err := applyFilters(map[string]any{}, fields, idx, nil)
+	clauses, params, err := applyFilters(map[string]any{}, fields, idx, nil, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -402,7 +402,7 @@ func TestApplyFilters_EqFilter(t *testing.T) {
 			"plz": map[string]any{"eq": 8001},
 		},
 	}
-	clauses, params, err := applyFilters(args, fields, idx, nil)
+	clauses, params, err := applyFilters(args, fields, idx, nil, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -433,7 +433,7 @@ func TestApplyFilters_MultipleFields(t *testing.T) {
 			"name": map[string]any{"eq": "Zürich"},
 		},
 	}
-	clauses, params, err := applyFilters(args, fields, idx, nil)
+	clauses, params, err := applyFilters(args, fields, idx, nil, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -454,7 +454,7 @@ func TestApplyFilters_NilValue(t *testing.T) {
 			"plz": map[string]any{"eq": nil},
 		},
 	}
-	clauses, _, err := applyFilters(args, fields, idx, nil)
+	clauses, _, err := applyFilters(args, fields, idx, nil, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -473,7 +473,7 @@ func TestApplyFilters_WithExistingParams(t *testing.T) {
 		},
 	}
 	existingParams := []any{"existing"}
-	clauses, params, err := applyFilters(args, fields, idx, existingParams)
+	clauses, params, err := applyFilters(args, fields, idx, existingParams, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -497,7 +497,7 @@ func TestApplyFilters_ErrorFromPlugin(t *testing.T) {
 			"plz": map[string]any{"gte": 100},
 		},
 	}
-	_, _, err := applyFilters(args, fields, idx, nil)
+	_, _, err := applyFilters(args, fields, idx, nil, "")
 	if err == nil {
 		t.Fatal("expected error from unsupported operator")
 	}
@@ -1011,6 +1011,27 @@ func TestResolveChildren_FallbackToDB_Error(t *testing.T) {
 	}
 }
 
+func TestApplyFilters_WithTableAlias(t *testing.T) {
+	fields := []FieldDef{{Name: "name", Type: "String"}}
+	filters := []plugin.FilterPlugin{eqfilter.New("String", graphql.String)}
+	idx := indexFilterPlugins(filters)
+	args := map[string]any{
+		"filter": map[string]any{
+			"name": map[string]any{"eq": "Zürich"},
+		},
+	}
+	clauses, _, err := applyFilters(args, fields, idx, nil, "t0")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(clauses) != 1 {
+		t.Fatalf("expected 1 clause, got %d", len(clauses))
+	}
+	if clauses[0] != "t0.name = $1" {
+		t.Errorf("clause = %q, want %q", clauses[0], "t0.name = $1")
+	}
+}
+
 func TestApplyFilters_SkipsRelationFields(t *testing.T) {
 	fields := []FieldDef{
 		{Name: "kanton", Type: "Kanton", IsRelation: true},
@@ -1023,12 +1044,62 @@ func TestApplyFilters_SkipsRelationFields(t *testing.T) {
 			"kanton": map[string]any{"eq": "ZH"},
 		},
 	}
-	clauses, _, err := applyFilters(args, fields, idx, nil)
+	clauses, _, err := applyFilters(args, fields, idx, nil, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if len(clauses) != 0 {
 		t.Errorf("expected 0 clauses for relation field, got %d", len(clauses))
+	}
+}
+
+func TestAssembleNested_IDNotFirstColumn(t *testing.T) {
+	// A type where id is NOT the first field — verifies the null sentinel uses id, not position 0.
+	widget := TypeDef{
+		Name: "Widget",
+		Fields: []FieldDef{
+			{Name: "label", Type: "String", NonNull: false}, // nullable, comes first
+			{Name: "id", Type: "ID", NonNull: true},
+		},
+	}
+	parent := TypeDef{
+		Name: "Parent",
+		Fields: []FieldDef{
+			{Name: "id", Type: "ID", NonNull: true},
+			{Name: "widget", Type: "Widget", IsRelation: true, NonNull: true},
+		},
+	}
+	idx := map[string]TypeDef{"Widget": widget, "Parent": parent}
+	seq := 0
+	nodes := buildJoinNodes(parent, "test", idx, "t0", 0, 5, &seq)
+
+	parentCols := columnNames(parent)      // ["id", "widget_id"]
+	joinCols := joinAliasedColNames(nodes) // ["j1__label", "j1__id"]
+
+	// Simulate a real widget row where label IS null but id is non-null ("w1").
+	// The old code would use joinVals[0] (label=nil) as sentinel and discard the row.
+	// The fixed code uses the "id" column explicitly and sees id="w1", so keeps the row.
+	vals := []any{
+		"p1", // parent id
+		"w1", // widget_id (FK)
+		nil,  // j1__label (nullable — this widget has no label)
+		"w1", // j1__id
+	}
+
+	row := assembleJoinedRows(vals, parentCols, joinCols, nodes)
+	widgetVal, ok := row["widget"]
+	if !ok {
+		t.Fatal("expected widget key to be present")
+	}
+	if widgetVal == nil {
+		t.Fatal("expected widget to be non-nil (label=nil is not a missing row), but got nil")
+	}
+	widgetMap, ok := widgetVal.(map[string]any)
+	if !ok {
+		t.Fatalf("expected widget to be map[string]any, got %T", widgetVal)
+	}
+	if widgetMap["id"] != "w1" {
+		t.Errorf("widget.id = %v, want w1", widgetMap["id"])
 	}
 }
 
@@ -1289,40 +1360,30 @@ func TestAssembleJoinedRows_NullIntermediate(t *testing.T) {
 	}
 }
 
-func TestQueryDepth(t *testing.T) {
-	tests := []struct {
-		query string
-		want  int
-	}{
-		{`{ plz { list { plz } } }`, 3},
-		{`{ plz { list { plz ortschaft { name kanton { kuerzel } } } } }`, 5},
-		{`{ g { list { f { e { d { c { b { a { name } } } } } } } } }`, 9},
-		{`{}`, 1},
-		{``, 0},
-	}
-	for _, tt := range tests {
-		got := queryDepth(tt.query)
-		if got != tt.want {
-			t.Errorf("queryDepth(%q) = %d, want %d", tt.query, got, tt.want)
-		}
-	}
-}
-
 func TestSelectionRelationDepth(t *testing.T) {
 	tests := []struct {
+		name  string
 		query string
 		want  int
 	}{
-		{`{ plz { list { plz } } }`, 0},
-		{`{ plz { list { plz ortschaft { name } } } }`, 1},
-		{`{ plz { list { plz ortschaft { name kanton { kuerzel } } } } }`, 2},
-		{`{ g { list { f { e { d { c { b { a { name } } } } } } } } }`, 6},
+		{"no relation", `{ plz { list { plz } } }`, 0},
+		{"one hop", `{ plz { list { plz ortschaft { name } } } }`, 1},
+		{"two hops", `{ plz { list { plz ortschaft { name kanton { kuerzel } } } } }`, 2},
+		{"six hops", `{ g { list { f { e { d { c { b { a { name } } } } } } } } }`, 6},
+		// Named fragment: relation chain inside fragment must count correctly (bypass fix)
+		{"named fragment two hops", `{ plz { list { ...frag } } } fragment frag on PLZ { ortschaft { name kanton { kuerzel } } }`, 2},
+		// String literal } deflates raw brace count, making depth appear shallower than it is (bypass fix)
+		{"string literal } does not deflate depth", `{ entity { list(filter: { code: { eq: "}" } }) { rel { subrel { x } } } } }`, 2},
+		// String literal { inflates raw brace count, causing false rejection (false-positive fix)
+		{"string literal { does not inflate depth", `{ plz { list(filter: { code: { eq: "{" } }) { plz } } } }`, 0},
 	}
 	for _, tt := range tests {
-		got := selectionRelationDepth(tt.query)
-		if got != tt.want {
-			t.Errorf("selectionRelationDepth(%q) = %d, want %d", tt.query, got, tt.want)
-		}
+		t.Run(tt.name, func(t *testing.T) {
+			got := selectionRelationDepth(tt.query)
+			if got != tt.want {
+				t.Errorf("selectionRelationDepth(%q) = %d, want %d", tt.query, got, tt.want)
+			}
+		})
 	}
 }
 

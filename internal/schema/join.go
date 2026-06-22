@@ -22,6 +22,9 @@ import (
 	"os"
 	"strconv"
 	"strings"
+
+	"github.com/vektah/gqlparser/v2/ast"
+	"github.com/vektah/gqlparser/v2/parser"
 )
 
 // defaultMaxDepth is the maximum N:1 relation depth when no override is set.
@@ -124,7 +127,17 @@ func assembleNested(parent map[string]any, joinVals []any, nodes []joinNode) {
 	offset := 0
 	for _, n := range nodes {
 		colCount := totalJoinCols(n)
-		idVal := joinVals[offset] // first column is always "id"
+		// Use the "id" column as the null sentinel for absent LEFT JOIN rows.
+		// Find it by name rather than assuming position 0, so field definition
+		// order in the SDL does not affect correctness.
+		idIdx := 0
+		for i, c := range n.cols {
+			if c == "id" {
+				idIdx = i
+				break
+			}
+		}
+		idVal := joinVals[offset+idIdx]
 		if idVal == nil {
 			parent[n.fieldName] = nil
 			offset += colCount
@@ -162,38 +175,62 @@ func MaxDepthFromEnv() int {
 	return v
 }
 
-// queryDepth returns the maximum nesting depth of a GraphQL query string.
-// It counts the depth of nested selections (curly braces).
-func queryDepth(query string) int {
-	maxD := 0
-	current := 0
-	for _, r := range query {
-		if r == '{' {
-			current++
-			if current > maxD {
-				maxD = current
-			}
-		} else if r == '}' {
-			current--
-		}
-	}
-	return maxD
-}
-
-// relationDepth returns the maximum N:1 relation chain depth in a query.
-// This walks the selection and counts only the hops that correspond to N:1
-// relation fields (not namespace wrappers like "plz { list { ... } }").
-// A simpler approach: count the nesting depth of relation fields in the schema.
+// selectionRelationDepth returns the maximum field-selection nesting depth of a
+// GraphQL query minus the three fixed Stratum wrapper levels
+// (root operation → type namespace → list/get field).
+//
+// It parses the query with gqlparser so that string literals, named fragments,
+// and aliases are all handled correctly. Raw brace counting is not used because
+// it misreads } inside string argument values (depth bypass) and { inside
+// string argument values (false rejection).
+//
+// Named fragments are resolved inline: a spread's depth equals the depth of
+// the fragment body at the point of use. InlineFragment / FragmentSpread
+// wrappers do not add a level themselves — only Field nodes do.
+//
+// Returns 0 for any query that cannot be parsed (graphql-go will surface the
+// error independently).
 func selectionRelationDepth(query string) int {
-	// For the purpose of this story, we use the structural depth metric:
-	// the total { } depth minus the fixed wrapper levels (root → namespace → list/get).
-	// In Stratum, queries always look like: { typeName { list/get { ...fields... } } }
-	// So the relation depth = queryDepth - 3.
-	d := queryDepth(query)
-	if d < 3 {
+	doc, err := parser.ParseQuery(&ast.Source{Input: query})
+	if err != nil || doc == nil {
 		return 0
 	}
-	return d - 3
+	frags := make(map[string]ast.SelectionSet, len(doc.Fragments))
+	for _, f := range doc.Fragments {
+		frags[f.Name] = f.SelectionSet
+	}
+	max := 0
+	for _, op := range doc.Operations {
+		if d := selSetDepth(op.SelectionSet, frags); d > max {
+			max = d
+		}
+	}
+	if max < 3 {
+		return 0
+	}
+	return max - 3
+}
+
+// selSetDepth returns the maximum depth of nested Field selections.
+// Only *ast.Field nodes add a level; InlineFragment and FragmentSpread are
+// expanded inline at the current level.
+func selSetDepth(sel ast.SelectionSet, frags map[string]ast.SelectionSet) int {
+	max := 0
+	for _, s := range sel {
+		var d int
+		switch v := s.(type) {
+		case *ast.Field:
+			d = selSetDepth(v.SelectionSet, frags) + 1
+		case *ast.InlineFragment:
+			d = selSetDepth(v.SelectionSet, frags)
+		case *ast.FragmentSpread:
+			d = selSetDepth(frags[v.Name], frags)
+		}
+		if d > max {
+			max = d
+		}
+	}
+	return max
 }
 
 // qualifiedRootCols returns column expressions qualified with the root alias.

@@ -163,16 +163,15 @@ func BuildHandler(db *pgxpool.Pool, schemaName string, ps *ParsedSchema, scalars
 					Resolve: func(p graphql.ResolveParams) (any, error) {
 						query := buildListQueryWithJoins(tbl, colNames, joinNodes, childSubExprs)
 						var params []any
-						whereClauses, params, err := applyFilters(p.Args, typFields, filtersByScalar, params)
+						tableAlias := ""
+						if len(joinNodes) > 0 {
+							tableAlias = "t0"
+						}
+						whereClauses, params, err := applyFilters(p.Args, typFields, filtersByScalar, params, tableAlias)
 						if err != nil {
 							return nil, err
 						}
 						if len(whereClauses) > 0 {
-							if len(joinNodes) > 0 {
-								for i, c := range whereClauses {
-									whereClauses[i] = "t0." + c
-								}
-							}
 							query += " WHERE " + strings.Join(whereClauses, " AND ")
 						}
 						query += " ORDER BY t0.id"
@@ -534,17 +533,8 @@ func getRecordWithJoins(ctx context.Context, db *pgxpool.Pool, tbl string, paren
 	if len(nodes) == 0 {
 		return getRecord(ctx, db, tbl, parentCols, id)
 	}
-	rootAlias := "t0"
-	selectExprs := qualifiedRootCols(rootAlias, parentCols)
-	selectExprs = append(selectExprs, joinSelectExprs(nodes)...)
-	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("SELECT %s FROM %s %s", strings.Join(selectExprs, ", "), tbl, rootAlias))
-	for _, clause := range joinClauses(nodes) {
-		sb.WriteString(" ")
-		sb.WriteString(clause)
-	}
-	sb.WriteString(fmt.Sprintf(" WHERE %s.id = $1", rootAlias))
-	row := db.QueryRow(ctx, sb.String(), id)
+	query := buildListQueryWithJoins(tbl, parentCols, nodes, nil) + " WHERE t0.id = $1"
+	row := db.QueryRow(ctx, query, id)
 	totalCols := len(parentCols) + len(joinCols)
 	vals := make([]any, totalCols)
 	ptrs := make([]any, totalCols)
@@ -608,7 +598,11 @@ func indexFilterPlugins(filters []plugin.FilterPlugin) map[string][]plugin.Filte
 }
 
 // applyFilters extracts the filter argument from GraphQL args and generates SQL WHERE clauses.
-func applyFilters(args map[string]any, fields []FieldDef, filtersByScalar map[string][]plugin.FilterPlugin, params []any) ([]string, []any, error) {
+// tableAlias, when non-empty, is prepended to each column name so that generated clauses
+// are unambiguous in queries with JOIN (e.g. "t0"). This is passed directly to the filter
+// plugin's ToSQL call so that function-wrapping expressions (LOWER(col) etc.) also get a
+// correctly qualified column, rather than having "t0." blindly prepended to the whole clause.
+func applyFilters(args map[string]any, fields []FieldDef, filtersByScalar map[string][]plugin.FilterPlugin, params []any, tableAlias string) ([]string, []any, error) {
 	filterArg, ok := args["filter"].(map[string]any)
 	if !ok || filterArg == nil {
 		return nil, params, nil
@@ -622,13 +616,17 @@ func applyFilters(args map[string]any, fields []FieldDef, filtersByScalar map[st
 		if !ok {
 			continue
 		}
+		colName := f.Name
+		if tableAlias != "" {
+			colName = tableAlias + "." + colName
+		}
 		fps := filtersByScalar[f.Type]
 		for operator, value := range fieldFilter {
 			if value == nil {
 				continue
 			}
 			for _, fp := range fps {
-				clause, newParams, err := fp.ToSQL(f.Name, operator, value, len(params)+1)
+				clause, newParams, err := fp.ToSQL(colName, operator, value, len(params)+1)
 				if err != nil {
 					return nil, nil, fmt.Errorf("schema: apply filter %q.%q: %w", f.Name, operator, err)
 				}
