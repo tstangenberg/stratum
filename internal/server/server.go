@@ -207,7 +207,7 @@ func (s *StratumServer) UpsertSchema(ctx context.Context, req api.UpsertSchemaRe
 		}
 	}
 
-	h, err := schema.BuildHandler(s.db, name, ps, s.scalars, s.queryModifiers, s.filterPlugins)
+	h, err := schema.BuildHandler(s.db, name, ps, s.scalars, s.queryModifiers, s.filterPlugins, schema.MaxDepthFromEnv())
 	if err != nil {
 		return nil, fmt.Errorf("upsert schema %q: build handler: %w", name, err)
 	}

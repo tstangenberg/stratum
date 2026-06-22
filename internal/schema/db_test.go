@@ -176,7 +176,7 @@ func TestGraphQLResolvers(t *testing.T) {
 	}
 
 	ps := &schema.ParsedSchema{Types: []schema.TypeDef{td}}
-	h, err := schema.BuildHandler(pool, "test", ps, scalars, []plugin.QueryModifier{simple.New()}, nil)
+	h, err := schema.BuildHandler(pool, "test", ps, scalars, []plugin.QueryModifier{simple.New()}, nil, 5)
 	if err != nil {
 		t.Fatalf("BuildHandler: %v", err)
 	}
@@ -292,7 +292,7 @@ func TestGraphQLResolvers_NullableField(t *testing.T) {
 	}
 
 	ps := &schema.ParsedSchema{Types: []schema.TypeDef{td}}
-	h, err := schema.BuildHandler(pool, "test", ps, scalars, []plugin.QueryModifier{simple.New()}, nil)
+	h, err := schema.BuildHandler(pool, "test", ps, scalars, []plugin.QueryModifier{simple.New()}, nil, 5)
 	if err != nil {
 		t.Fatalf("BuildHandler: %v", err)
 	}
@@ -407,7 +407,7 @@ func TestGraphQLResolvers_Relation(t *testing.T) {
 	}
 
 	ps := &schema.ParsedSchema{Types: []schema.TypeDef{kantonTD, ortTD}}
-	h, err := schema.BuildHandler(pool, "test", ps, scalars, []plugin.QueryModifier{simple.New()}, nil)
+	h, err := schema.BuildHandler(pool, "test", ps, scalars, []plugin.QueryModifier{simple.New()}, nil, 5)
 	if err != nil {
 		t.Fatalf("BuildHandler: %v", err)
 	}
@@ -537,7 +537,7 @@ func TestGraphQLResolvers_NullableRelation(t *testing.T) {
 	}
 
 	ps := &schema.ParsedSchema{Types: []schema.TypeDef{parentTD, childTD}}
-	h, err := schema.BuildHandler(pool, "test", ps, scalars, []plugin.QueryModifier{simple.New()}, nil)
+	h, err := schema.BuildHandler(pool, "test", ps, scalars, []plugin.QueryModifier{simple.New()}, nil, 5)
 	if err != nil {
 		t.Fatalf("BuildHandler: %v", err)
 	}
@@ -589,7 +589,7 @@ func TestGraphQLResolvers_ClosedPool(t *testing.T) {
 	}
 
 	ps := &schema.ParsedSchema{Types: []schema.TypeDef{td}}
-	h, err := schema.BuildHandler(pool, "test", ps, scalars, []plugin.QueryModifier{simple.New()}, nil)
+	h, err := schema.BuildHandler(pool, "test", ps, scalars, []plugin.QueryModifier{simple.New()}, nil, 5)
 	if err != nil {
 		t.Fatalf("BuildHandler: %v", err)
 	}
@@ -629,7 +629,7 @@ func TestGraphQLResolvers_ListPagination(t *testing.T) {
 
 	t.Setenv("STRATUM_PLUGINS_PAGINATION_MAX_LIMIT", "5")
 	ps := &schema.ParsedSchema{Types: []schema.TypeDef{td}}
-	h, err := schema.BuildHandler(pool, "test", ps, scalars, []plugin.QueryModifier{simple.New()}, nil)
+	h, err := schema.BuildHandler(pool, "test", ps, scalars, []plugin.QueryModifier{simple.New()}, nil, 5)
 	if err != nil {
 		t.Fatalf("BuildHandler: %v", err)
 	}
@@ -798,7 +798,7 @@ func TestFilterIntegration(t *testing.T) {
 		eqfilter.New("Int", scalars["Int"].GraphQLType()),
 	}
 	ps := &schema.ParsedSchema{Types: []schema.TypeDef{td}}
-	h, err := schema.BuildHandler(pool, "test", ps, scalars, []plugin.QueryModifier{simple.New()}, filters)
+	h, err := schema.BuildHandler(pool, "test", ps, scalars, []plugin.QueryModifier{simple.New()}, filters, 5)
 	if err != nil {
 		t.Fatalf("BuildHandler: %v", err)
 	}
@@ -907,7 +907,7 @@ func TestFilterIntegration_BrokenPlugin(t *testing.T) {
 
 	filters := []plugin.FilterPlugin{brokenFilter{gqlType: scalars["Int"].GraphQLType()}}
 	ps := &schema.ParsedSchema{Types: []schema.TypeDef{td}}
-	h, err := schema.BuildHandler(pool, "test", ps, scalars, []plugin.QueryModifier{simple.New()}, filters)
+	h, err := schema.BuildHandler(pool, "test", ps, scalars, []plugin.QueryModifier{simple.New()}, filters, 5)
 	if err != nil {
 		t.Fatalf("BuildHandler: %v", err)
 	}
@@ -926,6 +926,91 @@ func TestFilterIntegration_BrokenPlugin(t *testing.T) {
 	}
 	if len(resp.Errors) == 0 {
 		t.Fatal("expected GraphQL error from broken filter plugin")
+	}
+}
+
+func TestFilterWithJoins(t *testing.T) {
+	pool := startPool(t)
+	ctx := context.Background()
+
+	kantonTD := schema.TypeDef{
+		Name: "Kanton",
+		Fields: []schema.FieldDef{
+			{Name: "id", Type: "ID", NonNull: true},
+			{Name: "kuerzel", Type: "String", NonNull: true},
+		},
+	}
+	ortTD := schema.TypeDef{
+		Name: "Ortschaft",
+		Fields: []schema.FieldDef{
+			{Name: "id", Type: "ID", NonNull: true},
+			{Name: "name", Type: "String", NonNull: true},
+			{Name: "kanton", Type: "Kanton", IsRelation: true, NonNull: true},
+		},
+	}
+	scalars := schemaScalars()
+	if err := schema.CreateTable(ctx, pool, "test", kantonTD, scalars); err != nil {
+		t.Fatalf("CreateTable Kanton: %v", err)
+	}
+	if err := schema.CreateTable(ctx, pool, "test", ortTD, scalars); err != nil {
+		t.Fatalf("CreateTable Ortschaft: %v", err)
+	}
+
+	filters := []plugin.FilterPlugin{
+		eqfilter.New("String", graphql.String),
+	}
+	ps := &schema.ParsedSchema{Types: []schema.TypeDef{kantonTD, ortTD}}
+	h, err := schema.BuildHandler(pool, "test", ps, scalars, []plugin.QueryModifier{simple.New()}, filters, 5)
+	if err != nil {
+		t.Fatalf("BuildHandler: %v", err)
+	}
+
+	doGQL := func(body string) map[string]any {
+		t.Helper()
+		req := httptest.NewRequest(http.MethodPost, "/graphql/test", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, req)
+		var result struct {
+			Data   map[string]any             `json:"data"`
+			Errors []struct{ Message string } `json:"errors"`
+		}
+		if err := json.NewDecoder(w.Body).Decode(&result); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		if len(result.Errors) > 0 {
+			t.Fatalf("unexpected errors: %v", result.Errors)
+		}
+		return result.Data
+	}
+
+	// Create data
+	zhData := doGQL(`{"query":"mutation { kanton { create(input: {kuerzel: \"ZH\"}) { id } } }"}`)
+	zhID := zhData["kanton"].(map[string]any)["create"].(map[string]any)["id"].(string)
+	doGQL(`{"query":"mutation { ortschaft { create(input: {name: \"Zürich\", kantonId: \"` + zhID + `\"}) { id } } }"}`)
+	doGQL(`{"query":"mutation { ortschaft { create(input: {name: \"Bern\", kantonId: \"` + zhID + `\"}) { id } } }"}`)
+
+	// Filter by name with N:1 join — exercises WHERE qualification with t0. prefix
+	data := doGQL(`{"query":"{ ortschaft { list(filter: { name: { eq: \"Zürich\" } }) { name kanton { kuerzel } } } }"}`)
+	ns := data["ortschaft"].(map[string]any)
+	list := ns["list"].([]any)
+	if len(list) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(list))
+	}
+	item := list[0].(map[string]any)
+	if item["name"] != "Zürich" {
+		t.Errorf("name = %v, want Zürich", item["name"])
+	}
+	kan := item["kanton"].(map[string]any)
+	if kan["kuerzel"] != "ZH" {
+		t.Errorf("kanton.kuerzel = %v, want ZH", kan["kuerzel"])
+	}
+
+	// get by non-existent ID with N:1 join → exercises getRecordWithJoins ErrNoRows path
+	data = doGQL(`{"query":"{ ortschaft { get(id: \"nonexistent\") { name kanton { kuerzel } } } }"}`)
+	ns = data["ortschaft"].(map[string]any)
+	if ns["get"] != nil {
+		t.Errorf("expected null for missing ID, got %v", ns["get"])
 	}
 }
 
@@ -959,7 +1044,7 @@ func TestBuildHandler_OneToManyListTraversal(t *testing.T) {
 	}
 
 	ps := &schema.ParsedSchema{Types: []schema.TypeDef{ortTD, kantonTD}}
-	h, err := schema.BuildHandler(pool, "test", ps, scalars, []plugin.QueryModifier{simple.New()}, nil)
+	h, err := schema.BuildHandler(pool, "test", ps, scalars, []plugin.QueryModifier{simple.New()}, nil, 5)
 	if err != nil {
 		t.Fatalf("BuildHandler: %v", err)
 	}
@@ -1065,7 +1150,7 @@ func TestBuildHandler_OneToMany_QueryError(t *testing.T) {
 	}
 
 	ps := &schema.ParsedSchema{Types: []schema.TypeDef{ortTD, kantonTD}}
-	h, err := schema.BuildHandler(pool, "test", ps, scalars, []plugin.QueryModifier{simple.New()}, nil)
+	h, err := schema.BuildHandler(pool, "test", ps, scalars, []plugin.QueryModifier{simple.New()}, nil, 5)
 	if err != nil {
 		t.Fatalf("BuildHandler: %v", err)
 	}
@@ -1087,6 +1172,78 @@ func TestBuildHandler_OneToMany_QueryError(t *testing.T) {
 	if len(resp.Errors) == 0 {
 		t.Fatal("expected GraphQL error from closed pool")
 	}
+}
+
+func TestNToOneJoin_QueryError(t *testing.T) {
+	pool := startPool(t)
+	ctx := context.Background()
+
+	kantonTD := schema.TypeDef{
+		Name: "Kanton",
+		Fields: []schema.FieldDef{
+			{Name: "id", Type: "ID", NonNull: true},
+			{Name: "kuerzel", Type: "String", NonNull: true},
+		},
+	}
+	ortTD := schema.TypeDef{
+		Name: "Ortschaft",
+		Fields: []schema.FieldDef{
+			{Name: "id", Type: "ID", NonNull: true},
+			{Name: "name", Type: "String", NonNull: true},
+			{Name: "kanton", Type: "Kanton", IsRelation: true, NonNull: true},
+		},
+	}
+	scalars := schemaScalars()
+	if err := schema.CreateTable(ctx, pool, "test", kantonTD, scalars); err != nil {
+		t.Fatalf("CreateTable Kanton: %v", err)
+	}
+	if err := schema.CreateTable(ctx, pool, "test", ortTD, scalars); err != nil {
+		t.Fatalf("CreateTable Ortschaft: %v", err)
+	}
+
+	ps := &schema.ParsedSchema{Types: []schema.TypeDef{kantonTD, ortTD}}
+	h, err := schema.BuildHandler(pool, "test", ps, scalars, []plugin.QueryModifier{simple.New()}, nil, 5)
+	if err != nil {
+		t.Fatalf("BuildHandler: %v", err)
+	}
+
+	pool.Close()
+
+	// list query with closed pool → exercises listRecordsWithJoins error path
+	t.Run("list_error", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/graphql/test",
+			strings.NewReader(`{"query":"{ ortschaft { list { name kanton { kuerzel } } } }"}`))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, req)
+		var resp struct {
+			Errors []struct{ Message string } `json:"errors"`
+		}
+		if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		if len(resp.Errors) == 0 {
+			t.Fatal("expected GraphQL error from closed pool")
+		}
+	})
+
+	// get query with closed pool → exercises getRecordWithJoins error path
+	t.Run("get_error", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/graphql/test",
+			strings.NewReader(`{"query":"{ ortschaft { get(id: \"missing\") { name kanton { kuerzel } } } }"}`))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, req)
+		var resp struct {
+			Errors []struct{ Message string } `json:"errors"`
+		}
+		if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		if len(resp.Errors) == 0 {
+			t.Fatal("expected GraphQL error from closed pool")
+		}
+	})
 }
 
 func TestCreateTable_SkipsListRelation(t *testing.T) {
