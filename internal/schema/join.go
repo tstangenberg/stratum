@@ -115,12 +115,12 @@ func assembleJoinedRows(vals []any, parentCols []string, joinCols []string, node
 		row[name] = vals[i]
 	}
 	joinVals := vals[len(parentCols):]
-	assembleNested(row, joinVals, joinCols, nodes)
+	assembleNested(row, joinVals, nodes)
 	return row
 }
 
 // assembleNested populates nested relation maps from flat joined values.
-func assembleNested(parent map[string]any, joinVals []any, joinCols []string, nodes []joinNode) {
+func assembleNested(parent map[string]any, joinVals []any, nodes []joinNode) {
 	offset := 0
 	for _, n := range nodes {
 		colCount := totalJoinCols(n)
@@ -134,7 +134,7 @@ func assembleNested(parent map[string]any, joinVals []any, joinCols []string, no
 		for i, col := range n.cols {
 			nested[col] = joinVals[offset+i]
 		}
-		assembleNested(nested, joinVals[offset+len(n.cols):offset+colCount], joinCols[offset+len(n.cols):offset+colCount], n.children)
+		assembleNested(nested, joinVals[offset+len(n.cols):offset+colCount], n.children)
 		parent[n.fieldName] = nested
 		offset += colCount
 	}
@@ -184,7 +184,7 @@ func queryDepth(query string) int {
 // This walks the selection and counts only the hops that correspond to N:1
 // relation fields (not namespace wrappers like "plz { list { ... } }").
 // A simpler approach: count the nesting depth of relation fields in the schema.
-func selectionRelationDepth(query string, typeIndex map[string]TypeDef) int {
+func selectionRelationDepth(query string) int {
 	// For the purpose of this story, we use the structural depth metric:
 	// the total { } depth minus the fixed wrapper levels (root → namespace → list/get).
 	// In Stratum, queries always look like: { typeName { list/get { ...fields... } } }
@@ -210,10 +210,7 @@ func buildListQueryWithJoins(tbl string, rootCols []string, nodes []joinNode, ch
 	rootAlias := "t0"
 	selectExprs := qualifiedRootCols(rootAlias, rootCols)
 	selectExprs = append(selectExprs, joinSelectExprs(nodes)...)
-	for _, csExpr := range childSubqueryExprs {
-		// Replace bare parent table reference with alias
-		selectExprs = append(selectExprs, strings.ReplaceAll(csExpr, tbl+".id", rootAlias+".id"))
-	}
+	selectExprs = append(selectExprs, childSubqueryExprs...)
 
 	var sb strings.Builder
 	sb.WriteString("SELECT ")

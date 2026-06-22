@@ -616,7 +616,7 @@ func TestBuildChildSubqueries_NoListRelations(t *testing.T) {
 			{Name: "name", Type: "String"},
 		},
 	}
-	subs, err := buildChildSubqueries(td, "test", map[string]TypeDef{"Location": td})
+	subs, err := buildChildSubqueries(td, "test", map[string]TypeDef{"Location": td}, "test_location")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -643,7 +643,7 @@ func TestBuildChildSubqueries_WithListRelation(t *testing.T) {
 		},
 	}
 	typeIndex := map[string]TypeDef{"Kanton": kantonTD, "Ortschaft": ortTD}
-	subs, err := buildChildSubqueries(kantonTD, "swiss", typeIndex)
+	subs, err := buildChildSubqueries(kantonTD, "swiss", typeIndex, "t0")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -659,8 +659,8 @@ func TestBuildChildSubqueries_WithListRelation(t *testing.T) {
 	if !strings.Contains(subs[0].sql, "kanton_id") {
 		t.Error("subquery should reference kanton_id FK")
 	}
-	if !strings.Contains(subs[0].sql, "swiss_kanton.id") {
-		t.Error("subquery should reference parent table id")
+	if !strings.Contains(subs[0].sql, "t0.id") {
+		t.Error("subquery should reference parent alias")
 	}
 }
 
@@ -680,7 +680,7 @@ func TestBuildChildSubqueries_MissingReverseFK(t *testing.T) {
 		},
 	}
 	typeIndex := map[string]TypeDef{"Kanton": parentTD, "Ortschaft": childTD}
-	_, err := buildChildSubqueries(parentTD, "test", typeIndex)
+	_, err := buildChildSubqueries(parentTD, "test", typeIndex, "test_kanton")
 	if err == nil {
 		t.Fatal("expected error for missing reverse FK")
 	}
@@ -1309,7 +1309,6 @@ func TestQueryDepth(t *testing.T) {
 }
 
 func TestSelectionRelationDepth(t *testing.T) {
-	idx := map[string]TypeDef{}
 	tests := []struct {
 		query string
 		want  int
@@ -1320,7 +1319,7 @@ func TestSelectionRelationDepth(t *testing.T) {
 		{`{ g { list { f { e { d { c { b { a { name } } } } } } } } }`, 6},
 	}
 	for _, tt := range tests {
-		got := selectionRelationDepth(tt.query, idx)
+		got := selectionRelationDepth(tt.query)
 		if got != tt.want {
 			t.Errorf("selectionRelationDepth(%q) = %d, want %d", tt.query, got, tt.want)
 		}
@@ -1371,6 +1370,27 @@ func TestBuildListQueryWithJoins(t *testing.T) {
 	}
 	if !strings.Contains(query, "t0.id") {
 		t.Errorf("query missing qualified root columns: %s", query)
+	}
+}
+
+func TestBuildListQueryWithJoins_WithChildSubqueries(t *testing.T) {
+	plz, _, _, idx := plzOrtschaftKantonTypes()
+	seq := 0
+	nodes := buildJoinNodes(plz, "swiss", idx, "t0", 0, 5, &seq)
+	rootCols := columnNames(plz)
+	childExprs := []string{
+		"(SELECT COALESCE(json_agg(json_build_object('id', _c2.id) ORDER BY _c2.id), '[]'::json) FROM swiss_child _c2 WHERE _c2.plz_id = t0.id) AS children",
+	}
+	query := buildListQueryWithJoins("swiss_plz", rootCols, nodes, childExprs)
+
+	if !strings.Contains(query, "FROM swiss_plz t0") {
+		t.Errorf("query missing FROM clause: %s", query)
+	}
+	if !strings.Contains(query, "LEFT JOIN swiss_ortschaft j1") {
+		t.Errorf("query missing ortschaft join: %s", query)
+	}
+	if !strings.Contains(query, "t0.id) AS children") {
+		t.Errorf("query missing child subquery expression: %s", query)
 	}
 }
 
@@ -1550,11 +1570,10 @@ func TestGQLHandler_MaxDepthExceeded(t *testing.T) {
 }
 
 func TestSelectionRelationDepth_ShallowQuery(t *testing.T) {
-	idx := map[string]TypeDef{}
-	if got := selectionRelationDepth("{}", idx); got != 0 {
+	if got := selectionRelationDepth("{}"); got != 0 {
 		t.Errorf("selectionRelationDepth({}) = %d, want 0", got)
 	}
-	if got := selectionRelationDepth("{ a }", idx); got != 0 {
+	if got := selectionRelationDepth("{ a }"); got != 0 {
 		t.Errorf("selectionRelationDepth({ a }) = %d, want 0", got)
 	}
 }

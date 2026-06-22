@@ -144,7 +144,7 @@ func BuildHandler(db *pgxpool.Pool, schemaName string, ps *ParsedSchema, scalars
 		}
 
 		typFields := t.Fields
-		childSubqueries, err := buildChildSubqueries(t, schemaName, typeIndex)
+		childSubqueries, err := buildChildSubqueries(t, schemaName, typeIndex, "t0")
 		if err != nil {
 			return nil, err
 		}
@@ -246,7 +246,7 @@ func BuildHandler(db *pgxpool.Pool, schemaName string, ps *ParsedSchema, scalars
 	if err != nil {
 		return nil, fmt.Errorf("graphql: build schema: %w", err)
 	}
-	return &gqlHandler{schema: gqlSchema, maxDepth: maxDepth, typeIndex: typeIndex}, nil
+	return &gqlHandler{schema: gqlSchema, maxDepth: maxDepth}, nil
 }
 
 // resolveRelation returns a GraphQL resolver that loads the related record by FK.
@@ -270,9 +270,8 @@ func resolveRelation(db *pgxpool.Pool, relTbl string, relCols []string, fkCol st
 }
 
 type gqlHandler struct {
-	schema    graphql.Schema
-	maxDepth  int
-	typeIndex map[string]TypeDef
+	schema   graphql.Schema
+	maxDepth int
 }
 
 func (h *gqlHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -284,7 +283,7 @@ func (h *gqlHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid JSON body", http.StatusBadRequest)
 		return
 	}
-	if depth := selectionRelationDepth(params.Query, h.typeIndex); depth > h.maxDepth {
+	if depth := selectionRelationDepth(params.Query); depth > h.maxDepth {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"errors": []map[string]string{
@@ -658,9 +657,8 @@ type childSubquery struct {
 }
 
 // buildChildSubqueries builds correlated subqueries for each 1:N list relation on the type.
-func buildChildSubqueries(t TypeDef, schemaName string, typeIndex map[string]TypeDef) ([]childSubquery, error) {
+func buildChildSubqueries(t TypeDef, schemaName string, typeIndex map[string]TypeDef, parentRef string) ([]childSubquery, error) {
 	var subs []childSubquery
-	parentTbl := tableName(schemaName, t.Name)
 	for i, f := range t.Fields {
 		if !f.IsRelation || !f.IsList {
 			continue
@@ -680,7 +678,7 @@ func buildChildSubqueries(t TypeDef, schemaName string, typeIndex map[string]Typ
 		}
 		sub := fmt.Sprintf(
 			"(SELECT COALESCE(json_agg(json_build_object(%s) ORDER BY %s.id), '[]'::json) FROM %s %s WHERE %s.%s = %s.id) AS %s",
-			strings.Join(kvParts, ", "), alias, childTbl, alias, alias, fkCol, parentTbl, f.Name,
+			strings.Join(kvParts, ", "), alias, childTbl, alias, alias, fkCol, parentRef, f.Name,
 		)
 		subs = append(subs, childSubquery{fieldName: f.Name, sql: sub})
 	}
