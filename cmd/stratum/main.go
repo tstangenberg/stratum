@@ -27,6 +27,7 @@ import (
 
 	"github.com/tstangenberg/stratum/internal/config"
 	"github.com/tstangenberg/stratum/internal/plugin"
+	"github.com/tstangenberg/stratum/internal/plugin/auth/apikey"
 	dbplugin "github.com/tstangenberg/stratum/internal/plugin/database"
 	"github.com/tstangenberg/stratum/internal/server"
 )
@@ -57,6 +58,9 @@ func run(addr string) error {
 	srv := server.NewStratumServer(plugins...)
 	if pool != nil {
 		srv = srv.WithDB(pool)
+	}
+	if key := os.Getenv("STRATUM_API_KEY"); key != "" {
+		srv = srv.WithAuthPlugin(apikey.New(key))
 	}
 	return http.ListenAndServe(addr, server.Handler(srv))
 }

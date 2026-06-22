@@ -350,3 +350,90 @@ func TestWithFilterPlugins(t *testing.T) {
 		t.Errorf("filterPlugins[0].ScalarType() = %q, want %q", srv.filterPlugins[0].ScalarType(), "ID")
 	}
 }
+
+// stubAuthPlugin is a test-only AuthPlugin.
+type stubAuthPlugin struct {
+	allowed bool
+}
+
+func (s stubAuthPlugin) Name() string { return "stub-auth" }
+func (s stubAuthPlugin) Authenticate(r *http.Request) plugin.AuthResult {
+	return plugin.AuthResult{Allowed: s.allowed}
+}
+
+func TestWithAuthPlugin(t *testing.T) {
+	p := stubAuthPlugin{allowed: true}
+	srv := NewStratumServer().WithAuthPlugin(p)
+	if srv.authPlugin == nil {
+		t.Fatal("authPlugin should be set")
+	}
+}
+
+func TestAuth_RejectsWithout(t *testing.T) {
+	srv := NewStratumServer().WithAuthPlugin(stubAuthPlugin{allowed: false})
+	handler := Handler(srv)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/schemas", nil)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", w.Code)
+	}
+
+	var body map[string]string
+	if err := json.NewDecoder(w.Body).Decode(&body); err != nil {
+		t.Fatalf("response body not valid JSON: %v", err)
+	}
+	if body["error"] != "unauthorized" {
+		t.Errorf("error = %q, want %q", body["error"], "unauthorized")
+	}
+	if body["message"] != "valid API key required" {
+		t.Errorf("message = %q, want %q", body["message"], "valid API key required")
+	}
+}
+
+func TestAuth_AllowsValid(t *testing.T) {
+	srv := NewStratumServer().WithAuthPlugin(stubAuthPlugin{allowed: true})
+	handler := Handler(srv)
+
+	// Non-health endpoint with auth allowed — should pass through to handler
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/schemas", nil)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	// 501 means the request passed auth and reached the handler
+	if w.Code != http.StatusNotImplemented {
+		t.Fatalf("expected 501, got %d", w.Code)
+	}
+}
+
+func TestAuth_HealthExempt(t *testing.T) {
+	srv := NewStratumServer().WithAuthPlugin(stubAuthPlugin{allowed: false})
+	handler := Handler(srv)
+
+	paths := []string{"/api/v1/health/live", "/api/v1/health/ready"}
+	for _, path := range paths {
+		t.Run(path, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, path, nil)
+			w := httptest.NewRecorder()
+			handler.ServeHTTP(w, req)
+			if w.Code == http.StatusUnauthorized {
+				t.Fatalf("health %s should be exempt from auth", path)
+			}
+		})
+	}
+}
+
+func TestAuth_NilPluginSkipsAuth(t *testing.T) {
+	srv := NewStratumServer()
+	handler := Handler(srv)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/health/live", nil)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 with no auth plugin, got %d", w.Code)
+	}
+}

@@ -45,6 +45,7 @@ var errNotImplemented = errors.New("not implemented")
 // StratumServer is the main server struct.
 type StratumServer struct {
 	healthPlugins  []plugin.HealthPlugin
+	authPlugin     plugin.AuthPlugin
 	db             *pgxpool.Pool
 	schemas        *schema.Store
 	scalars        map[string]scalar.Plugin
@@ -93,6 +94,12 @@ func (s *StratumServer) WithQueryModifiers(modifiers ...plugin.QueryModifier) *S
 // The default set contains eq-filters for all MVP scalars; callers must include them explicitly if still needed.
 func (s *StratumServer) WithFilterPlugins(plugins ...plugin.FilterPlugin) *StratumServer {
 	s.filterPlugins = plugins
+	return s
+}
+
+// WithAuthPlugin sets the authentication plugin and returns the server for chaining.
+func (s *StratumServer) WithAuthPlugin(p plugin.AuthPlugin) *StratumServer {
+	s.authPlugin = p
 	return s
 }
 
@@ -292,5 +299,32 @@ func Handler(srv *StratumServer) http.Handler {
 	mux := http.NewServeMux()
 	mux.Handle("/api/", api.Handler(strict))
 	mux.HandleFunc("POST /graphql/{name}", srv.serveGraphQL)
+	if srv.authPlugin != nil {
+		return authMiddleware(srv.authPlugin, mux)
+	}
 	return mux
+}
+
+func authMiddleware(auth plugin.AuthPlugin, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if isHealthEndpoint(r.URL.Path) {
+			next.ServeHTTP(w, r)
+			return
+		}
+		result := auth.Authenticate(r)
+		if !result.Allowed {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusUnauthorized)
+			_ = json.NewEncoder(w).Encode(map[string]string{
+				"error":   "unauthorized",
+				"message": "valid API key required",
+			})
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func isHealthEndpoint(path string) bool {
+	return path == "/api/v1/health/live" || path == "/api/v1/health/ready"
 }
