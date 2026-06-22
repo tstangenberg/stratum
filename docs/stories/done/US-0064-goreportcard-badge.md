@@ -1,7 +1,7 @@
 ---
 id: US-0064
 tags: [docs]
-status: ready
+status: done
 ---
 
 # US-0064: Go Report Card badge in README
@@ -19,9 +19,9 @@ Report URL: `https://goreportcard.com/report/github.com/tstangenberg/stratum`
 
 ## Acceptance Criteria
 
-- [ ] The Go Report Card badge is added to the badge row in `README.md`
-- [ ] The badge links to `https://goreportcard.com/report/github.com/tstangenberg/stratum`
-- [ ] The badge renders correctly on GitHub (verified by inspecting the rendered README)
+- [x] The Go Report Card badge is added to the badge row in `README.md`
+- [x] The badge links to `https://goreportcard.com/report/github.com/tstangenberg/stratum`
+- [x] The badge renders correctly on GitHub (verified by inspecting the rendered README)
 
 ## E2E Tests
 

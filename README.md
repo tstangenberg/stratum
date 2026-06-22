@@ -2,6 +2,7 @@
 
 [![CI](https://github.com/tstangenberg/stratum/actions/workflows/ci.yml/badge.svg)](https://github.com/tstangenberg/stratum/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/tstangenberg/stratum/graph/badge.svg)](https://codecov.io/gh/tstangenberg/stratum)
+[![Go Report Card](https://goreportcard.com/badge/github.com/tstangenberg/stratum)](https://goreportcard.com/report/github.com/tstangenberg/stratum)
 
 Stratum is a schema-first data middleware. Define your data model once as a GraphQL SDL schema; Stratum exposes a REST API and manages the underlying PostgreSQL storage automatically. It handles schema uploads, record creation, querying, filtering, and relation traversal — so you can focus on your data model rather than boilerplate persistence code.
 
