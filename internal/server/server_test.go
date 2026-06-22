@@ -351,26 +351,77 @@ func TestWithFilterPlugins(t *testing.T) {
 	}
 }
 
-// stubAuthPlugin is a test-only AuthPlugin.
-type stubAuthPlugin struct {
-	allowed bool
+// stubHTTPMiddleware is a test-only HTTPMiddleware.
+type stubHTTPMiddleware struct {
+	name     string
+	priority int
+	allowed  bool
 }
 
-func (s stubAuthPlugin) Name() string { return "stub-auth" }
-func (s stubAuthPlugin) Authenticate(r *http.Request) plugin.AuthResult {
-	return plugin.AuthResult{Allowed: s.allowed}
+func (s stubHTTPMiddleware) Name() string  { return s.name }
+func (s stubHTTPMiddleware) Priority() int { return s.priority }
+func (s stubHTTPMiddleware) Wrap(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !s.allowed {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
-func TestWithAuthPlugin(t *testing.T) {
-	p := stubAuthPlugin{allowed: true}
-	srv := NewStratumServer().WithAuthPlugin(p)
-	if srv.authPlugin == nil {
-		t.Fatal("authPlugin should be set")
+// recordingMiddleware records invocation order for chain-ordering tests.
+type recordingMiddleware struct {
+	name     string
+	priority int
+	order    *[]string
+}
+
+func (r *recordingMiddleware) Name() string  { return r.name }
+func (r *recordingMiddleware) Priority() int { return r.priority }
+func (r *recordingMiddleware) Wrap(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		*r.order = append(*r.order, r.name)
+		next.ServeHTTP(w, req)
+	})
+}
+
+func TestWithMiddlewares(t *testing.T) {
+	m := stubHTTPMiddleware{name: "stub", priority: 100, allowed: true}
+	srv := NewStratumServer().WithMiddlewares(m)
+	if len(srv.middlewares) != 1 {
+		t.Fatalf("expected 1 middleware, got %d", len(srv.middlewares))
+	}
+	if srv.middlewares[0].Name() != "stub" {
+		t.Errorf("Name() = %q, want %q", srv.middlewares[0].Name(), "stub")
 	}
 }
 
-func TestAuth_RejectsWithout(t *testing.T) {
-	srv := NewStratumServer().WithAuthPlugin(stubAuthPlugin{allowed: false})
+func TestBuildChain_OrdersByPriority(t *testing.T) {
+	var order []string
+	middlewares := []plugin.HTTPMiddleware{
+		&recordingMiddleware{name: "third", priority: 300, order: &order},
+		&recordingMiddleware{name: "first", priority: 100, order: &order},
+		&recordingMiddleware{name: "second", priority: 200, order: &order},
+	}
+
+	muxCalled := false
+	mux := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { muxCalled = true })
+
+	h := buildChain(middlewares, mux)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/schemas", nil)
+	h.ServeHTTP(httptest.NewRecorder(), req)
+
+	if len(order) != 3 || order[0] != "first" || order[1] != "second" || order[2] != "third" {
+		t.Errorf("call order = %v, want [first second third]", order)
+	}
+	if !muxCalled {
+		t.Error("expected mux to be called")
+	}
+}
+
+func TestMiddleware_Rejects(t *testing.T) {
+	srv := NewStratumServer().WithMiddlewares(stubHTTPMiddleware{name: "stub", priority: 100, allowed: false})
 	handler := Handler(srv)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/schemas", nil)
@@ -380,52 +431,46 @@ func TestAuth_RejectsWithout(t *testing.T) {
 	if w.Code != http.StatusUnauthorized {
 		t.Fatalf("expected 401, got %d", w.Code)
 	}
-
-	var body map[string]string
-	if err := json.NewDecoder(w.Body).Decode(&body); err != nil {
-		t.Fatalf("response body not valid JSON: %v", err)
-	}
-	if body["error"] != "unauthorized" {
-		t.Errorf("error = %q, want %q", body["error"], "unauthorized")
-	}
-	if body["message"] != "valid API key required" {
-		t.Errorf("message = %q, want %q", body["message"], "valid API key required")
-	}
 }
 
-func TestAuth_AllowsValid(t *testing.T) {
-	srv := NewStratumServer().WithAuthPlugin(stubAuthPlugin{allowed: true})
+func TestMiddleware_Allows(t *testing.T) {
+	srv := NewStratumServer().WithMiddlewares(stubHTTPMiddleware{name: "stub", priority: 100, allowed: true})
 	handler := Handler(srv)
 
-	// Non-health endpoint with auth allowed — should pass through to handler
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/schemas", nil)
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 
-	// 501 means the request passed auth and reached the handler
+	// 501 means the request passed middleware and reached the handler
 	if w.Code != http.StatusNotImplemented {
 		t.Fatalf("expected 501, got %d", w.Code)
 	}
 }
 
-func TestAuth_HealthExempt(t *testing.T) {
-	srv := NewStratumServer().WithAuthPlugin(stubAuthPlugin{allowed: false})
+func TestMiddleware_HealthExempt(t *testing.T) {
+	srv := NewStratumServer().WithMiddlewares(stubHTTPMiddleware{name: "stub", priority: 100, allowed: false})
 	handler := Handler(srv)
 
-	paths := []string{"/api/v1/health/live", "/api/v1/health/ready"}
-	for _, path := range paths {
-		t.Run(path, func(t *testing.T) {
-			req := httptest.NewRequest(http.MethodGet, path, nil)
-			w := httptest.NewRecorder()
-			handler.ServeHTTP(w, req)
-			if w.Code == http.StatusUnauthorized {
-				t.Fatalf("health %s should be exempt from auth", path)
-			}
-		})
-	}
+	t.Run("/api/v1/health/live", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/health/live", nil)
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, req)
+		if w.Code != http.StatusOK {
+			t.Fatalf("health/live should return 200, got %d", w.Code)
+		}
+	})
+
+	t.Run("/api/v1/health/ready", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/health/ready", nil)
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, req)
+		if w.Code != http.StatusOK && w.Code != http.StatusServiceUnavailable {
+			t.Fatalf("health/ready should return 200 or 503, got %d", w.Code)
+		}
+	})
 }
 
-func TestAuth_NilPluginSkipsAuth(t *testing.T) {
+func TestNoMiddlewareSkipsAuth(t *testing.T) {
 	srv := NewStratumServer()
 	handler := Handler(srv)
 
@@ -434,6 +479,6 @@ func TestAuth_NilPluginSkipsAuth(t *testing.T) {
 	handler.ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200 with no auth plugin, got %d", w.Code)
+		t.Fatalf("expected 200 with no middleware, got %d", w.Code)
 	}
 }

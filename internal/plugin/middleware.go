@@ -19,13 +19,13 @@ package plugin
 
 import "net/http"
 
-// AuthResult is returned by an AuthPlugin after evaluating a request.
-type AuthResult struct {
-	Allowed bool
-}
-
-// AuthPlugin authenticates every request before any resolver or hook runs.
-type AuthPlugin interface {
+// HTTPMiddleware wraps an HTTP handler to implement cross-cutting request
+// processing such as authentication, rate-limiting, and logging.
+// Middlewares are applied in ascending Priority order — lower values run
+// first (outermost). Each plugin reads its own environment variable to
+// allow the default to be overridden via stratum.yaml.
+type HTTPMiddleware interface {
 	Name() string
-	Authenticate(r *http.Request) AuthResult
+	Priority() int
+	Wrap(next http.Handler) http.Handler
 }

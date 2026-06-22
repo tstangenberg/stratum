@@ -31,7 +31,7 @@ import (
 const testAPIKey = "test-secret-key-42"
 
 func TestAuthMissingKey(t *testing.T) {
-	srv := server.NewStratumServer().WithAuthPlugin(apikey.New(testAPIKey))
+	srv := server.NewStratumServer().WithMiddlewares(apikey.New(testAPIKey))
 	handler := server.Handler(srv)
 
 	endpoints := []struct {
@@ -89,7 +89,7 @@ func TestAuthMissingKey(t *testing.T) {
 }
 
 func TestAuthInvalidKey(t *testing.T) {
-	srv := server.NewStratumServer().WithAuthPlugin(apikey.New(testAPIKey))
+	srv := server.NewStratumServer().WithMiddlewares(apikey.New(testAPIKey))
 	handler := server.Handler(srv)
 
 	endpoints := []struct {

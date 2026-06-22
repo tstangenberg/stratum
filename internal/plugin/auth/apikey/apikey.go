@@ -19,7 +19,10 @@ package apikey
 
 import (
 	"crypto/subtle"
+	"encoding/json"
 	"net/http"
+	"os"
+	"strconv"
 
 	"github.com/tstangenberg/stratum/internal/plugin"
 )
@@ -37,10 +40,31 @@ func New(key string) *Plugin {
 
 func (p *Plugin) Name() string { return "api-key-auth" }
 
-func (p *Plugin) Authenticate(r *http.Request) plugin.AuthResult {
-	got := r.Header.Get("X-API-Key")
-	if subtle.ConstantTimeCompare([]byte(got), []byte(p.key)) == 1 {
-		return plugin.AuthResult{Allowed: true}
+// Priority returns the middleware position in the chain. Override via
+// STRATUM_HTTP_MIDDLEWARE_API_KEY_AUTH_PRIORITY in stratum.yaml.
+func (p *Plugin) Priority() int {
+	if s := os.Getenv("STRATUM_HTTP_MIDDLEWARE_API_KEY_AUTH_PRIORITY"); s != "" {
+		if v, err := strconv.Atoi(s); err == nil && v >= 0 {
+			return v
+		}
 	}
-	return plugin.AuthResult{Allowed: false}
+	return 100
 }
+
+func (p *Plugin) Wrap(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got := r.Header.Get("X-API-Key")
+		if subtle.ConstantTimeCompare([]byte(got), []byte(p.key)) != 1 {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusUnauthorized)
+			_ = json.NewEncoder(w).Encode(map[string]string{
+				"error":   "unauthorized",
+				"message": "valid API key required",
+			})
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+var _ plugin.HTTPMiddleware = (*Plugin)(nil)

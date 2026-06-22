@@ -60,7 +60,7 @@ func run(addr string) error {
 		srv = srv.WithDB(pool)
 	}
 	if key := os.Getenv("STRATUM_API_KEY"); key != "" {
-		srv = srv.WithAuthPlugin(apikey.New(key))
+		srv = srv.WithMiddlewares(apikey.New(key))
 	}
 	return http.ListenAndServe(addr, server.Handler(srv))
 }

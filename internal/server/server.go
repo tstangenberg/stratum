@@ -23,6 +23,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"sort"
 	"sync"
 	"time"
 
@@ -45,7 +46,7 @@ var errNotImplemented = errors.New("not implemented")
 // StratumServer is the main server struct.
 type StratumServer struct {
 	healthPlugins  []plugin.HealthPlugin
-	authPlugin     plugin.AuthPlugin
+	middlewares    []plugin.HTTPMiddleware
 	db             *pgxpool.Pool
 	schemas        *schema.Store
 	scalars        map[string]scalar.Plugin
@@ -97,9 +98,10 @@ func (s *StratumServer) WithFilterPlugins(plugins ...plugin.FilterPlugin) *Strat
 	return s
 }
 
-// WithAuthPlugin sets the authentication plugin and returns the server for chaining.
-func (s *StratumServer) WithAuthPlugin(p plugin.AuthPlugin) *StratumServer {
-	s.authPlugin = p
+// WithMiddlewares appends HTTP middleware to the pipeline and returns the server for chaining.
+// Middlewares are applied in ascending Priority() order at request time.
+func (s *StratumServer) WithMiddlewares(m ...plugin.HTTPMiddleware) *StratumServer {
+	s.middlewares = append(s.middlewares, m...)
 	return s
 }
 
@@ -285,10 +287,9 @@ func notImplementedHandler(w http.ResponseWriter, _ *http.Request, err error) {
 	})
 }
 
-// Handler returns an http.Handler for all Stratum routes:
-//
-//	/api/           → OpenAPI-generated REST endpoints
-//	/graphql/{name} → dynamic GraphQL endpoint per schema
+// Handler returns an http.Handler for all Stratum routes.
+// Health endpoints bypass all middleware. Remaining requests pass through
+// registered middlewares in ascending priority order before reaching the mux.
 func Handler(srv *StratumServer) http.Handler {
 	strict := api.NewStrictHandlerWithOptions(srv, nil, api.StrictHTTPServerOptions{
 		RequestErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, err error) {
@@ -299,30 +300,31 @@ func Handler(srv *StratumServer) http.Handler {
 	mux := http.NewServeMux()
 	mux.Handle("/api/", api.Handler(strict))
 	mux.HandleFunc("POST /graphql/{name}", srv.serveGraphQL)
-	if srv.authPlugin != nil {
-		return authMiddleware(srv.authPlugin, mux)
-	}
-	return mux
+	return buildChain(srv.middlewares, mux)
 }
 
-func authMiddleware(auth plugin.AuthPlugin, next http.Handler) http.Handler {
+func buildChain(middlewares []plugin.HTTPMiddleware, mux http.Handler) http.Handler {
+	sorted := sortByPriority(middlewares)
+	h := mux
+	for i := len(sorted) - 1; i >= 0; i-- {
+		h = sorted[i].Wrap(h)
+	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if isHealthEndpoint(r.URL.Path) {
-			next.ServeHTTP(w, r)
+			mux.ServeHTTP(w, r)
 			return
 		}
-		result := auth.Authenticate(r)
-		if !result.Allowed {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusUnauthorized)
-			_ = json.NewEncoder(w).Encode(map[string]string{
-				"error":   "unauthorized",
-				"message": "valid API key required",
-			})
-			return
-		}
-		next.ServeHTTP(w, r)
+		h.ServeHTTP(w, r)
 	})
+}
+
+func sortByPriority(middlewares []plugin.HTTPMiddleware) []plugin.HTTPMiddleware {
+	sorted := make([]plugin.HTTPMiddleware, len(middlewares))
+	copy(sorted, middlewares)
+	sort.Slice(sorted, func(i, j int) bool {
+		return sorted[i].Priority() < sorted[j].Priority()
+	})
+	return sorted
 }
 
 func isHealthEndpoint(path string) bool {
