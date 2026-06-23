@@ -7,7 +7,7 @@ require (
 	github.com/jackc/pgx/v5 v5.9.2
 	github.com/oapi-codegen/runtime v1.4.1
 	github.com/testcontainers/testcontainers-go v0.43.0
-	github.com/testcontainers/testcontainers-go/modules/postgres v0.42.0
+	github.com/testcontainers/testcontainers-go/modules/postgres v0.43.0
 	github.com/vektah/gqlparser/v2 v2.5.35
 	gopkg.in/yaml.v3 v3.0.1
 )
