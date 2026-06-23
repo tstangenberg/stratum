@@ -53,8 +53,9 @@ type StratumServer struct {
 	filterPlugins  []plugin.FilterPlugin
 }
 
-// NewStratumServer creates a new StratumServer with the given health plugins.
-func NewStratumServer(plugins ...plugin.HealthPlugin) *StratumServer {
+// NewStratumServer creates a new StratumServer. Health plugins are wired
+// internally via plugin.BuildHealthPlugins().
+func NewStratumServer() *StratumServer {
 	scalars := map[string]scalar.Plugin{
 		"String":  stringscalar.Plugin{},
 		"ID":      idscalar.Plugin{},
@@ -63,7 +64,7 @@ func NewStratumServer(plugins ...plugin.HealthPlugin) *StratumServer {
 		"Boolean": booleanscalar.Plugin{},
 	}
 	return &StratumServer{
-		healthPlugins:  plugins,
+		healthPlugins:  plugin.BuildHealthPlugins(),
 		schemas:        schema.NewStore(),
 		queryModifiers: []plugin.QueryModifier{simplepagination.New()},
 		scalars:        scalars,

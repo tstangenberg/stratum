@@ -19,10 +19,22 @@ package database
 
 import (
 	"context"
+	"os"
 	"regexp"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/tstangenberg/stratum/internal/plugin"
 )
+
+func init() {
+	plugin.RegisterHealthPlugin(func() plugin.HealthPlugin {
+		if p := FromEnv(); p != nil {
+			return p
+		}
+		return nil
+	})
+}
 
 // credentialsPattern matches the user:password portion of a DSN URL.
 var credentialsPattern = regexp.MustCompile(`://[^:@/]+:[^@/]*@`)
@@ -40,6 +52,20 @@ type Plugin struct {
 // New returns a Plugin that uses db for connectivity checks.
 func New(db Pinger) *Plugin {
 	return &Plugin{db: db}
+}
+
+// FromEnv creates a Plugin from the STRATUM_DATABASE_URL environment variable.
+// Returns nil when the variable is not set.
+func FromEnv() *Plugin {
+	dsn := os.Getenv("STRATUM_DATABASE_URL")
+	if dsn == "" {
+		return nil
+	}
+	pool, err := pgxpool.New(context.Background(), dsn)
+	if err != nil {
+		return nil
+	}
+	return &Plugin{db: pool}
 }
 
 func (p *Plugin) Name() string { return "database" }

@@ -25,12 +25,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/wait"
 
-	dbplugin "github.com/tstangenberg/stratum/internal/plugin/database"
+	_ "github.com/tstangenberg/stratum/internal/plugin/database"
 	"github.com/tstangenberg/stratum/internal/server"
 )
 
@@ -57,13 +56,9 @@ func TestDatabaseHealth_OK(t *testing.T) {
 		t.Fatalf("get connection string: %v", err)
 	}
 
-	pool, err := pgxpool.New(ctx, dsn)
-	if err != nil {
-		t.Fatalf("create pool: %v", err)
-	}
-	t.Cleanup(func() { pool.Close() })
+	t.Setenv("STRATUM_DATABASE_URL", dsn)
 
-	handler := server.Handler(server.NewStratumServer(dbplugin.New(pool)))
+	handler := server.Handler(server.NewStratumServer())
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/health/ready", nil)
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
@@ -90,13 +85,9 @@ func TestDatabaseHealth_OK(t *testing.T) {
 }
 
 func TestDatabaseHealth_Unreachable(t *testing.T) {
-	pool, err := pgxpool.New(context.Background(), "postgres://testuser:testpass@localhost:1/testdb?sslmode=disable")
-	if err != nil {
-		t.Fatalf("create pool: %v", err)
-	}
-	t.Cleanup(func() { pool.Close() })
+	t.Setenv("STRATUM_DATABASE_URL", "postgres://testuser:testpass@localhost:1/testdb?sslmode=disable")
 
-	handler := server.Handler(server.NewStratumServer(dbplugin.New(pool)))
+	handler := server.Handler(server.NewStratumServer())
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/health/ready", nil)
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)

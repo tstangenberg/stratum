@@ -28,6 +28,20 @@ import (
 	"github.com/tstangenberg/stratum/internal/plugin/database"
 )
 
+func TestFromEnv_ReturnsNilWhenUnset(t *testing.T) {
+	t.Setenv("STRATUM_DATABASE_URL", "")
+	if p := database.FromEnv(); p != nil {
+		t.Fatal("FromEnv() should return nil when STRATUM_DATABASE_URL is empty")
+	}
+}
+
+func TestFromEnv_ReturnsNilOnInvalidDSN(t *testing.T) {
+	t.Setenv("STRATUM_DATABASE_URL", "not-a-valid-dsn://:::broken")
+	if p := database.FromEnv(); p != nil {
+		t.Fatal("FromEnv() should return nil on invalid DSN")
+	}
+}
+
 type mockPinger struct{ err error }
 
 func (m *mockPinger) Ping(_ context.Context) error { return m.err }
@@ -71,5 +85,37 @@ func TestDatabasePlugin_CheckDoesNotExposeCredentials(t *testing.T) {
 	}
 	if strings.Contains(msg, "supersecret") || strings.Contains(msg, "admin:") {
 		t.Errorf("error detail must not expose credentials, got: %q", msg)
+	}
+}
+
+func TestFromEnv_ReturnsPluginOnValidDSN(t *testing.T) {
+	t.Setenv("STRATUM_DATABASE_URL", "postgres://user:pass@localhost:5432/db?sslmode=disable")
+	p := database.FromEnv()
+	if p == nil {
+		t.Fatal("FromEnv() should return non-nil for a valid DSN")
+	}
+}
+
+func TestInit_RegistersFactory_NilWhenUnset(t *testing.T) {
+	t.Setenv("STRATUM_DATABASE_URL", "")
+	ps := plugin.BuildHealthPlugins()
+	for _, p := range ps {
+		if p.Name() == "database" {
+			t.Fatal("expected no database plugin when STRATUM_DATABASE_URL is unset")
+		}
+	}
+}
+
+func TestInit_RegistersFactory_PluginWhenSet(t *testing.T) {
+	t.Setenv("STRATUM_DATABASE_URL", "postgres://user:pass@localhost:5432/db?sslmode=disable")
+	ps := plugin.BuildHealthPlugins()
+	found := false
+	for _, p := range ps {
+		if p.Name() == "database" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("expected database plugin when STRATUM_DATABASE_URL is set")
 	}
 }
