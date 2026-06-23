@@ -1,7 +1,7 @@
 ---
 id: US-0055
 tags: [community, launch]
-status: ready
+status: done
 ---
 
 # US-0055: Configure Dependabot
@@ -16,10 +16,10 @@ Dependabot opens automated PRs when dependencies have new versions or known vuln
 
 ## Acceptance Criteria
 
-- [ ] `.github/dependabot.yml` exists
-- [ ] Go module updates are configured (`package-ecosystem: gomod`, `directory: /`, weekly schedule)
-- [ ] GitHub Actions updates are configured (`package-ecosystem: github-actions`, `directory: /`, weekly schedule)
-- [ ] The `dependencies` label is assigned to Dependabot PRs (uses the label preserved in US-0050)
+- [x] `.github/dependabot.yml` exists
+- [x] Go module updates are configured (`package-ecosystem: gomod`, `directory: /`, weekly schedule)
+- [x] GitHub Actions updates are configured (`package-ecosystem: github-actions`, `directory: /`, weekly schedule)
+- [x] The `dependencies` label is assigned to Dependabot PRs (uses the label preserved in US-0050)
 - [ ] A Dependabot PR appears within one week of the config being merged (confirms the config is valid)
 
 ## E2E Tests
