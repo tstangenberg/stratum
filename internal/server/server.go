@@ -23,7 +23,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"sort"
 	"sync"
 	"time"
 
@@ -304,10 +303,9 @@ func Handler(srv *StratumServer) http.Handler {
 }
 
 func buildChain(middlewares []plugin.HTTPMiddleware, mux http.Handler) http.Handler {
-	sorted := sortByPriority(middlewares)
-	h := mux
-	for i := len(sorted) - 1; i >= 0; i-- {
-		h = sorted[i].Wrap(h)
+	h := http.Handler(mux)
+	for i := len(middlewares) - 1; i >= 0; i-- {
+		h = middlewares[i].Wrap(h)
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if isHealthEndpoint(r.URL.Path) {
@@ -316,15 +314,6 @@ func buildChain(middlewares []plugin.HTTPMiddleware, mux http.Handler) http.Hand
 		}
 		h.ServeHTTP(w, r)
 	})
-}
-
-func sortByPriority(middlewares []plugin.HTTPMiddleware) []plugin.HTTPMiddleware {
-	sorted := make([]plugin.HTTPMiddleware, len(middlewares))
-	copy(sorted, middlewares)
-	sort.Slice(sorted, func(i, j int) bool {
-		return sorted[i].Priority() < sorted[j].Priority()
-	})
-	return sorted
 }
 
 func isHealthEndpoint(path string) bool {

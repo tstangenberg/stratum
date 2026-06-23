@@ -22,6 +22,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/tstangenberg/stratum/internal/plugin"
 )
 
 func TestName(t *testing.T) {
@@ -59,6 +61,41 @@ func TestPriorityNegativeEnvFallsBack(t *testing.T) {
 	p := New("secret")
 	if p.Priority() != 100 {
 		t.Fatalf("Priority() = %d, want 100 (default for negative)", p.Priority())
+	}
+}
+
+func TestInit_RegistersMiddlewareWhenKeySet(t *testing.T) {
+	t.Setenv("STRATUM_API_KEY", "test-key")
+	for _, m := range plugin.BuildMiddlewares() {
+		if m.Name() == "api-key-auth" {
+			return
+		}
+	}
+	t.Fatal("api-key-auth not found in BuildMiddlewares() when STRATUM_API_KEY is set")
+}
+
+func TestInit_OmitsMiddlewareWhenKeyNotSet(t *testing.T) {
+	t.Setenv("STRATUM_API_KEY", "")
+	for _, m := range plugin.BuildMiddlewares() {
+		if m.Name() == "api-key-auth" {
+			t.Fatal("api-key-auth should not appear in BuildMiddlewares() when STRATUM_API_KEY is unset")
+		}
+	}
+}
+
+func TestFromEnv_KeySet(t *testing.T) {
+	t.Setenv("STRATUM_API_KEY", "test-key")
+	p := FromEnv()
+	if p == nil {
+		t.Fatal("FromEnv() = nil, want non-nil plugin when STRATUM_API_KEY is set")
+	}
+}
+
+func TestFromEnv_KeyNotSet(t *testing.T) {
+	t.Setenv("STRATUM_API_KEY", "")
+	p := FromEnv()
+	if p != nil {
+		t.Fatal("FromEnv() = non-nil, want nil when STRATUM_API_KEY is not set")
 	}
 }
 

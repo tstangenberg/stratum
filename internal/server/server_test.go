@@ -397,8 +397,9 @@ func TestWithMiddlewares(t *testing.T) {
 	}
 }
 
-func TestBuildChain_OrdersByPriority(t *testing.T) {
+func TestBuildChain_AppliesInGivenOrder(t *testing.T) {
 	var order []string
+	// Passed in deliberately non-priority order; buildChain must preserve it.
 	middlewares := []plugin.HTTPMiddleware{
 		&recordingMiddleware{name: "third", priority: 300, order: &order},
 		&recordingMiddleware{name: "first", priority: 100, order: &order},
@@ -412,8 +413,8 @@ func TestBuildChain_OrdersByPriority(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/schemas", nil)
 	h.ServeHTTP(httptest.NewRecorder(), req)
 
-	if len(order) != 3 || order[0] != "first" || order[1] != "second" || order[2] != "third" {
-		t.Errorf("call order = %v, want [first second third]", order)
+	if len(order) != 3 || order[0] != "third" || order[1] != "first" || order[2] != "second" {
+		t.Errorf("call order = %v, want [third first second]", order)
 	}
 	if !muxCalled {
 		t.Error("expected mux to be called")

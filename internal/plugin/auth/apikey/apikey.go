@@ -27,6 +27,15 @@ import (
 	"github.com/tstangenberg/stratum/internal/plugin"
 )
 
+func init() {
+	plugin.RegisterMiddleware(func() plugin.HTTPMiddleware {
+		if p := FromEnv(); p != nil {
+			return p
+		}
+		return nil
+	})
+}
+
 // Plugin authenticates requests by comparing the X-API-Key header
 // against a pre-shared key using constant-time comparison.
 type Plugin struct {
@@ -35,6 +44,16 @@ type Plugin struct {
 
 // New creates an api-key-auth plugin that validates the X-API-Key header.
 func New(key string) *Plugin {
+	return &Plugin{key: key}
+}
+
+// FromEnv creates a plugin from the STRATUM_API_KEY environment variable.
+// Returns nil when the variable is not set, which leaves auth disabled.
+func FromEnv() *Plugin {
+	key := os.Getenv("STRATUM_API_KEY")
+	if key == "" {
+		return nil
+	}
 	return &Plugin{key: key}
 }
 
@@ -67,4 +86,5 @@ func (p *Plugin) Wrap(next http.Handler) http.Handler {
 	})
 }
 
+// Compile-time check that *Plugin satisfies plugin.HTTPMiddleware.
 var _ plugin.HTTPMiddleware = (*Plugin)(nil)
