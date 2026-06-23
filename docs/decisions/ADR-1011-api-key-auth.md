@@ -23,4 +23,8 @@ Chosen: **API key auth via `STRATUM_API_KEY` environment variable**, because:
 - No user management, no token issuance, no identity provider — the operator sets the key, the client sends it.
 - Auth is implemented as the `api-key-auth` plugin (see ADR-1008). Stratum core has no auth logic. Replacing it with `jwt-auth` or `oauth2-auth` Post-MVP requires only swapping the plugin — no core changes.
 
-**Request flow:** Auth plugin runs first, before any resolver or hook. If `Authenticate` returns `Allowed: false`, the server responds with 401 and no further processing occurs.
+**Request flow:** Auth plugin runs first, before any resolver or hook. If the `X-API-Key` header is missing or does not match, `Wrap` writes a 401 JSON response and does not call the next handler.
+
+## Implementation note
+
+`api-key-auth` was initially implemented against a dedicated `AuthPlugin` interface (`Authenticate(*http.Request) AuthResult`). It was subsequently migrated to the general `HTTPMiddleware` interface (`Priority() int`, `Wrap(http.Handler) http.Handler`) to enable a configurable middleware pipeline. The observable behaviour and security properties are unchanged.

@@ -27,6 +27,7 @@ import (
 
 	"github.com/tstangenberg/stratum/internal/config"
 	"github.com/tstangenberg/stratum/internal/plugin"
+	_ "github.com/tstangenberg/stratum/internal/plugin/auth/apikey"
 	dbplugin "github.com/tstangenberg/stratum/internal/plugin/database"
 	"github.com/tstangenberg/stratum/internal/server"
 )
@@ -58,6 +59,7 @@ func run(addr string) error {
 	if pool != nil {
 		srv = srv.WithDB(pool)
 	}
+	srv = srv.WithMiddlewares(plugin.BuildMiddlewares()...)
 	return http.ListenAndServe(addr, server.Handler(srv))
 }
 

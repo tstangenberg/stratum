@@ -45,6 +45,7 @@ var errNotImplemented = errors.New("not implemented")
 // StratumServer is the main server struct.
 type StratumServer struct {
 	healthPlugins  []plugin.HealthPlugin
+	middlewares    []plugin.HTTPMiddleware
 	db             *pgxpool.Pool
 	schemas        *schema.Store
 	scalars        map[string]scalar.Plugin
@@ -93,6 +94,13 @@ func (s *StratumServer) WithQueryModifiers(modifiers ...plugin.QueryModifier) *S
 // The default set contains eq-filters for all MVP scalars; callers must include them explicitly if still needed.
 func (s *StratumServer) WithFilterPlugins(plugins ...plugin.FilterPlugin) *StratumServer {
 	s.filterPlugins = plugins
+	return s
+}
+
+// WithMiddlewares appends HTTP middleware to the pipeline and returns the server for chaining.
+// Middlewares are applied in ascending Priority() order at request time.
+func (s *StratumServer) WithMiddlewares(m ...plugin.HTTPMiddleware) *StratumServer {
+	s.middlewares = append(s.middlewares, m...)
 	return s
 }
 
@@ -278,10 +286,9 @@ func notImplementedHandler(w http.ResponseWriter, _ *http.Request, err error) {
 	})
 }
 
-// Handler returns an http.Handler for all Stratum routes:
-//
-//	/api/           → OpenAPI-generated REST endpoints
-//	/graphql/{name} → dynamic GraphQL endpoint per schema
+// Handler returns an http.Handler for all Stratum routes.
+// Health endpoints bypass all middleware. Remaining requests pass through
+// registered middlewares in ascending priority order before reaching the mux.
 func Handler(srv *StratumServer) http.Handler {
 	strict := api.NewStrictHandlerWithOptions(srv, nil, api.StrictHTTPServerOptions{
 		RequestErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, err error) {
@@ -292,5 +299,23 @@ func Handler(srv *StratumServer) http.Handler {
 	mux := http.NewServeMux()
 	mux.Handle("/api/", api.Handler(strict))
 	mux.HandleFunc("POST /graphql/{name}", srv.serveGraphQL)
-	return mux
+	return buildChain(srv.middlewares, mux)
+}
+
+func buildChain(middlewares []plugin.HTTPMiddleware, mux http.Handler) http.Handler {
+	h := http.Handler(mux)
+	for i := len(middlewares) - 1; i >= 0; i-- {
+		h = middlewares[i].Wrap(h)
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if isHealthEndpoint(r.URL.Path) {
+			mux.ServeHTTP(w, r)
+			return
+		}
+		h.ServeHTTP(w, r)
+	})
+}
+
+func isHealthEndpoint(path string) bool {
+	return path == "/api/v1/health/live" || path == "/api/v1/health/ready"
 }

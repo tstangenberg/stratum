@@ -1,7 +1,7 @@
 ---
 id: US-012
 tags: [auth]
-status: ready
+status: done
 ---
 
 # US-0012: API key authentication
@@ -16,12 +16,12 @@ Authentication is handled by the `api-key-auth` plugin from the MVP bundle. It r
 
 ## Acceptance Criteria
 
-- [ ] Requests with a valid `X-API-Key` header are processed normally
-- [ ] Requests without an `X-API-Key` header return HTTP 401
-- [ ] Requests with an incorrect `X-API-Key` value return HTTP 401
-- [ ] HTTP 401 responses do not reveal whether the key exists or is wrong
-- [ ] Auth applies to all endpoints: GraphQL (`/graphql/{name}`) and REST (`/schemas/...`)
-- [ ] `GET /api/v1/health/live` and `GET /api/v1/health/ready` are exempt from auth (public health checks)
+- [x] Requests with a valid `X-API-Key` header are processed normally
+- [x] Requests without an `X-API-Key` header return HTTP 401
+- [x] Requests with an incorrect `X-API-Key` value return HTTP 401
+- [x] HTTP 401 responses do not reveal whether the key exists or is wrong
+- [x] Auth applies to all endpoints: GraphQL (`/graphql/{name}`) and REST (`/schemas/...`)
+- [x] `GET /api/v1/health/live` and `GET /api/v1/health/ready` are exempt from auth (public health checks)
 
 ## E2E Tests
 
