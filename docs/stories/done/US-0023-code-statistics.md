@@ -1,7 +1,7 @@
 ---
 id: US-0023
 tags: [ci, dev-tooling]
-status: ready
+status: done
 ---
 
 # US-0023: Code statistics with scc
@@ -16,11 +16,11 @@ status: ready
 
 ## Acceptance Criteria
 
-- [ ] CI installs and runs `scc` on every push to `main`
-- [ ] Output is printed to the GitHub Actions workflow summary
-- [ ] Report breaks down stats by package (not just totals)
-- [ ] Test files are reported separately from production code
-- [ ] `scc` failure does not fail the CI build — it is informational only
+- [x] CI installs and runs `scc` on every push to `main`
+- [x] Output is printed to the GitHub Actions workflow summary
+- [x] Report breaks down stats by package (not just totals)
+- [x] Test files are reported separately from production code
+- [x] `scc` failure does not fail the CI build — it is informational only
 
 ## E2E Tests
 
