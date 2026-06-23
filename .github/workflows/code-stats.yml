@@ -1,0 +1,33 @@
+name: Code Statistics
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  stats:
+    name: code-stats
+    runs-on: ubuntu-latest
+    continue-on-error: true
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install scc
+        run: |
+          curl -fsSL https://github.com/boyter/scc/releases/download/v3.4.0/scc_Linux_x86_64.tar.gz \
+            | tar xz -C /usr/local/bin scc
+
+      - name: Production code statistics
+        run: |
+          echo '## Production Code' >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          scc --by-file -i go -M '_test\.go$' --sort name >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Test code statistics
+        run: |
+          echo '## Test Code' >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          find . -name '*_test.go' -not -path './.git/*' | xargs scc --by-file --sort name >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
