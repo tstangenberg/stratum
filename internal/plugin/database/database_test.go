@@ -90,6 +90,7 @@ func TestDatabasePlugin_CheckDoesNotExposeCredentials(t *testing.T) {
 
 func TestFromEnv_ReturnsPluginOnValidDSN(t *testing.T) {
 	t.Setenv("STRATUM_DATABASE_URL", "postgres://user:pass@localhost:5432/db?sslmode=disable")
+	t.Cleanup(func() { database.ClosePool() })
 	p := database.FromEnv()
 	if p == nil {
 		t.Fatal("FromEnv() should return non-nil for a valid DSN")

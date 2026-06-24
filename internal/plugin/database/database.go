@@ -19,6 +19,7 @@ package database
 
 import (
 	"context"
+	"log"
 	"os"
 	"regexp"
 
@@ -71,6 +72,7 @@ func FromEnv() *Plugin {
 	}
 	pool, err := pgxpool.New(context.Background(), dsn)
 	if err != nil {
+		log.Printf("database plugin: failed to create pool: %v", err)
 		return nil
 	}
 	createdPool = pool

@@ -123,7 +123,6 @@ func doReadiness(t *testing.T, plugins ...plugin.HealthPlugin) *http.Response {
 	restore := plugin.ResetHealthRegistryForTesting()
 	t.Cleanup(restore)
 	for _, p := range plugins {
-		p := p
 		plugin.RegisterHealthPlugin(func() plugin.HealthPlugin { return p })
 	}
 	srv := Handler(NewStratumServer())
