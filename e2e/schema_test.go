@@ -942,3 +942,220 @@ func TestSchemaIntScalar(t *testing.T) {
 		t.Error("overflow: expected GraphQL error for out-of-range Int, got none")
 	}
 }
+
+func TestSchemaNullableFields(t *testing.T) {
+	ctx := context.Background()
+
+	pgc, err := postgres.Run(ctx, "postgres:16-alpine",
+		postgres.WithDatabase("stratum"),
+		postgres.WithUsername("stratum"),
+		postgres.WithPassword("stratum"),
+		testcontainers.WithWaitStrategy(
+			wait.ForLog("database system is ready to accept connections").
+				WithOccurrence(2).
+				WithStartupTimeout(30*time.Second),
+		),
+	)
+	if err != nil {
+		t.Fatalf("start postgres: %v", err)
+	}
+	t.Cleanup(func() { _ = pgc.Terminate(ctx) })
+
+	dsn, err := pgc.ConnectionString(ctx, "sslmode=disable")
+	if err != nil {
+		t.Fatalf("connection string: %v", err)
+	}
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		t.Fatalf("connect pool: %v", err)
+	}
+	t.Cleanup(pool.Close)
+
+	handler := server.Handler(server.NewStratumServer().WithDB(pool))
+
+	// Schema: name is required (String!), description is nullable (String)
+	sdl := `type Article { id: ID! name: String! description: String }`
+	body, _ := json.Marshal(api.SchemaUploadRequest{Sdl: sdl})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/schemas/articles",
+		bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("upload: expected 200, got %d — body: %s", w.Code, w.Body.String())
+	}
+
+	// ── 1. Verify NOT NULL on required field ────────────────────────────────
+	var nameNullable string
+	err = pool.QueryRow(ctx,
+		`SELECT is_nullable FROM information_schema.columns
+		 WHERE table_name = 'articles_article' AND column_name = 'name'`).Scan(&nameNullable)
+	if err != nil {
+		t.Fatalf("name is_nullable query: %v", err)
+	}
+	if nameNullable != "NO" {
+		t.Errorf("name is_nullable = %q, want %q (NOT NULL column)", nameNullable, "NO")
+	}
+
+	// ── 2. Verify nullable column for optional field ────────────────────────
+	var descNullable string
+	err = pool.QueryRow(ctx,
+		`SELECT is_nullable FROM information_schema.columns
+		 WHERE table_name = 'articles_article' AND column_name = 'description'`).Scan(&descNullable)
+	if err != nil {
+		t.Fatalf("description is_nullable query: %v", err)
+	}
+	if descNullable != "YES" {
+		t.Errorf("description is_nullable = %q, want %q (nullable column)", descNullable, "YES")
+	}
+
+	// ── 3. Create a record without the nullable field — succeeds ────────────
+	gqlCreate := `{"query":"mutation { article { create(input: {name: \"Go Basics\"}) { id name description } } }"}`
+	req = httptest.NewRequest(http.MethodPost, "/graphql/articles",
+		strings.NewReader(gqlCreate))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("create-nullable: expected 200, got %d — body: %s", w.Code, w.Body.String())
+	}
+
+	var createResult struct {
+		Data struct {
+			Article struct {
+				Create struct {
+					ID          string  `json:"id"`
+					Name        string  `json:"name"`
+					Description *string `json:"description"`
+				} `json:"create"`
+			} `json:"article"`
+		} `json:"data"`
+		Errors []struct{ Message string } `json:"errors"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&createResult); err != nil {
+		t.Fatalf("create-nullable: decode: %v", err)
+	}
+	if len(createResult.Errors) > 0 {
+		t.Fatalf("create-nullable: GraphQL errors: %v", createResult.Errors)
+	}
+	createdID := createResult.Data.Article.Create.ID
+	if createdID == "" {
+		t.Fatal("create-nullable: expected non-empty id")
+	}
+	if createResult.Data.Article.Create.Name != "Go Basics" {
+		t.Errorf("create-nullable: name = %q, want %q", createResult.Data.Article.Create.Name, "Go Basics")
+	}
+	if createResult.Data.Article.Create.Description != nil {
+		t.Errorf("create-nullable: description = %v, want nil", *createResult.Data.Article.Create.Description)
+	}
+
+	// ── 4. Verify NULL stored in DB ─────────────────────────────────────────
+	var dbDesc *string
+	err = pool.QueryRow(ctx,
+		`SELECT description FROM articles_article WHERE id = $1`, createdID).Scan(&dbDesc)
+	if err != nil {
+		t.Fatalf("query description: %v", err)
+	}
+	if dbDesc != nil {
+		t.Errorf("db description = %q, want NULL", *dbDesc)
+	}
+
+	// ── 5. Querying a NULL field returns null in GraphQL response ────────────
+	gqlGet := fmt.Sprintf(`{"query":"{ article { get(id: \"%s\") { id name description } } }"}`, createdID)
+	req = httptest.NewRequest(http.MethodPost, "/graphql/articles",
+		strings.NewReader(gqlGet))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("get-nullable: expected 200, got %d — body: %s", w.Code, w.Body.String())
+	}
+
+	var getResult struct {
+		Data struct {
+			Article struct {
+				Get struct {
+					ID          string  `json:"id"`
+					Name        string  `json:"name"`
+					Description *string `json:"description"`
+				} `json:"get"`
+			} `json:"article"`
+		} `json:"data"`
+		Errors []struct{ Message string } `json:"errors"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&getResult); err != nil {
+		t.Fatalf("get-nullable: decode: %v", err)
+	}
+	if len(getResult.Errors) > 0 {
+		t.Fatalf("get-nullable: GraphQL errors: %v", getResult.Errors)
+	}
+	if getResult.Data.Article.Get.Description != nil {
+		t.Errorf("get-nullable: description = %v, want null", *getResult.Data.Article.Get.Description)
+	}
+
+	// ── 6. Creating without a required field returns a GraphQL error ─────────
+	gqlMissing := `{"query":"mutation { article { create(input: {description: \"no name\"}) { id } } }"}`
+	req = httptest.NewRequest(http.MethodPost, "/graphql/articles",
+		strings.NewReader(gqlMissing))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("missing-required: expected 200, got %d — body: %s", w.Code, w.Body.String())
+	}
+
+	var missingResult struct {
+		Data   any                        `json:"data"`
+		Errors []struct{ Message string } `json:"errors"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&missingResult); err != nil {
+		t.Fatalf("missing-required: decode: %v", err)
+	}
+	if len(missingResult.Errors) == 0 {
+		t.Fatal("missing-required: expected GraphQL error for missing required field, got none")
+	}
+
+	// ── 7. Creating with both fields set works and returns non-null ──────────
+	gqlFull := `{"query":"mutation { article { create(input: {name: \"Full Article\", description: \"Has content\"}) { id name description } } }"}`
+	req = httptest.NewRequest(http.MethodPost, "/graphql/articles",
+		strings.NewReader(gqlFull))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("create-full: expected 200, got %d — body: %s", w.Code, w.Body.String())
+	}
+
+	var fullResult struct {
+		Data struct {
+			Article struct {
+				Create struct {
+					ID          string  `json:"id"`
+					Name        string  `json:"name"`
+					Description *string `json:"description"`
+				} `json:"create"`
+			} `json:"article"`
+		} `json:"data"`
+		Errors []struct{ Message string } `json:"errors"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&fullResult); err != nil {
+		t.Fatalf("create-full: decode: %v", err)
+	}
+	if len(fullResult.Errors) > 0 {
+		t.Fatalf("create-full: GraphQL errors: %v", fullResult.Errors)
+	}
+	if fullResult.Data.Article.Create.Name != "Full Article" {
+		t.Errorf("create-full: name = %q, want %q", fullResult.Data.Article.Create.Name, "Full Article")
+	}
+	if fullResult.Data.Article.Create.Description == nil {
+		t.Fatal("create-full: description is nil, want non-nil")
+	}
+	if *fullResult.Data.Article.Create.Description != "Has content" {
+		t.Errorf("create-full: description = %q, want %q", *fullResult.Data.Article.Create.Description, "Has content")
+	}
+}

@@ -1,7 +1,7 @@
 ---
 id: US-017
 tags: [schema]
-status: ready
+status: done
 ---
 
 # US-0017: Schema with nullable fields
@@ -16,11 +16,11 @@ In GraphQL SDL, `field: String!` is required (non-null) and `field: String` is n
 
 ## Acceptance Criteria
 
-- [ ] `field: String!` produces a `NOT NULL` column in PostgreSQL
-- [ ] `field: String` (no `!`) produces a nullable column in PostgreSQL
-- [ ] Creating a record without providing a nullable field succeeds — the field is stored as `NULL`
-- [ ] Creating a record without providing a required field returns a GraphQL error
-- [ ] Querying a `NULL` field returns `null` in the GraphQL response
+- [x] `field: String!` produces a `NOT NULL` column in PostgreSQL
+- [x] `field: String` (no `!`) produces a nullable column in PostgreSQL
+- [x] Creating a record without providing a nullable field succeeds — the field is stored as `NULL`
+- [x] Creating a record without providing a required field returns a GraphQL error
+- [x] Querying a `NULL` field returns `null` in the GraphQL response
 
 ## E2E Tests
 
