@@ -28,6 +28,20 @@ import (
 	"github.com/tstangenberg/stratum/internal/plugin/database"
 )
 
+func TestFromEnv_ReturnsNilWhenUnset(t *testing.T) {
+	t.Setenv("STRATUM_DATABASE_URL", "")
+	if p := database.FromEnv(); p != nil {
+		t.Fatal("FromEnv() should return nil when STRATUM_DATABASE_URL is empty")
+	}
+}
+
+func TestFromEnv_ReturnsNilOnInvalidDSN(t *testing.T) {
+	t.Setenv("STRATUM_DATABASE_URL", "not-a-valid-dsn://:::broken")
+	if p := database.FromEnv(); p != nil {
+		t.Fatal("FromEnv() should return nil on invalid DSN")
+	}
+}
+
 type mockPinger struct{ err error }
 
 func (m *mockPinger) Ping(_ context.Context) error { return m.err }
@@ -72,4 +86,81 @@ func TestDatabasePlugin_CheckDoesNotExposeCredentials(t *testing.T) {
 	if strings.Contains(msg, "supersecret") || strings.Contains(msg, "admin:") {
 		t.Errorf("error detail must not expose credentials, got: %q", msg)
 	}
+}
+
+func TestFromEnv_ReturnsPluginOnValidDSN(t *testing.T) {
+	t.Setenv("STRATUM_DATABASE_URL", "postgres://user:pass@localhost:5432/db?sslmode=disable")
+	t.Cleanup(func() { database.ClosePool() })
+	p := database.FromEnv()
+	if p == nil {
+		t.Fatal("FromEnv() should return non-nil for a valid DSN")
+	}
+}
+
+func TestFactory_ReturnsNilWhenUnset(t *testing.T) {
+	t.Setenv("STRATUM_DATABASE_URL", "")
+	if p := database.Factory(); p != nil {
+		t.Fatal("Factory() should return nil when STRATUM_DATABASE_URL is unset")
+	}
+}
+
+func TestFactory_ReturnsPluginWhenSet(t *testing.T) {
+	t.Setenv("STRATUM_DATABASE_URL", "postgres://user:pass@localhost:5432/db?sslmode=disable")
+	t.Cleanup(func() { database.ClosePool() })
+	p := database.Factory()
+	if p == nil {
+		t.Fatal("Factory() should return non-nil when STRATUM_DATABASE_URL is set")
+	}
+	if p.Name() != "database" {
+		t.Fatalf("Factory().Name() = %q, want %q", p.Name(), "database")
+	}
+}
+
+func TestInit_RegistersFactory(t *testing.T) {
+	restore := plugin.ResetHealthRegistryForTesting()
+	t.Cleanup(restore)
+	plugin.RegisterHealthPlugin(database.Factory)
+	t.Setenv("STRATUM_DATABASE_URL", "postgres://user:pass@localhost:5432/db?sslmode=disable")
+	t.Cleanup(func() { database.ClosePool() })
+	ps := plugin.BuildHealthPlugins()
+	found := false
+	for _, p := range ps {
+		if p.Name() == "database" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("expected database plugin when factory registered and DSN set")
+	}
+}
+
+func TestPool_ReturnsNilBeforeFromEnv(t *testing.T) {
+	database.ClosePool()
+	t.Cleanup(func() { database.ClosePool() })
+	if p := database.Pool(); p != nil {
+		t.Fatal("Pool() should return nil before FromEnv is called")
+	}
+}
+
+func TestPool_ReturnsPoolAfterFromEnv(t *testing.T) {
+	t.Cleanup(func() { database.ClosePool() })
+	t.Setenv("STRATUM_DATABASE_URL", "postgres://user:pass@localhost:5432/db?sslmode=disable")
+	database.FromEnv()
+	if p := database.Pool(); p == nil {
+		t.Fatal("Pool() should return non-nil after FromEnv with valid DSN")
+	}
+}
+
+func TestClosePool_ClosesAndNilsPool(t *testing.T) {
+	t.Setenv("STRATUM_DATABASE_URL", "postgres://user:pass@localhost:5432/db?sslmode=disable")
+	database.FromEnv()
+	database.ClosePool()
+	if p := database.Pool(); p != nil {
+		t.Fatal("Pool() should return nil after ClosePool")
+	}
+}
+
+func TestClosePool_NoopWhenNil(t *testing.T) {
+	database.ClosePool()
+	database.ClosePool()
 }
