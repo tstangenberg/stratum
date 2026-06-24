@@ -120,7 +120,12 @@ func (s stubHealthPlugin) Check(_ context.Context) plugin.HealthStatus {
 
 func doReadiness(t *testing.T, plugins ...plugin.HealthPlugin) *http.Response {
 	t.Helper()
-	srv := Handler(NewStratumServer(plugins...))
+	restore := plugin.ResetHealthRegistryForTesting()
+	t.Cleanup(restore)
+	for _, p := range plugins {
+		plugin.RegisterHealthPlugin(func() plugin.HealthPlugin { return p })
+	}
+	srv := Handler(NewStratumServer())
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/health/ready", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
@@ -284,7 +289,10 @@ func (s slowHealthPlugin) Check(ctx context.Context) plugin.HealthStatus {
 }
 
 func TestReadiness_Timeout(t *testing.T) {
-	srv := Handler(NewStratumServer(slowHealthPlugin{}))
+	restore := plugin.ResetHealthRegistryForTesting()
+	t.Cleanup(restore)
+	plugin.RegisterHealthPlugin(func() plugin.HealthPlugin { return slowHealthPlugin{} })
+	srv := Handler(NewStratumServer())
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/health/ready", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)

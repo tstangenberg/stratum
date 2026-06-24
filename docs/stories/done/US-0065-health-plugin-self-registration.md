@@ -1,7 +1,7 @@
 ---
 id: US-0065
 tags: [plugin, refactor]
-status: open
+status: done
 ---
 
 # US-0065: HealthPlugin self-registration
@@ -18,12 +18,12 @@ status: open
 
 ## Acceptance Criteria
 
-- [ ] `plugin.RegisterHealthPlugin(f func() plugin.HealthPlugin)` and `plugin.BuildHealthPlugins() []plugin.HealthPlugin` exist, backed by a `plugin.Registry`-based health registry
-- [ ] `internal/plugin/database` self-registers via `init()` — returning `nil` from the factory when `STRATUM_DATABASE_URL` is not set
-- [ ] `NewStratumServer` no longer accepts `HealthPlugin` as a variadic argument; health plugins are wired internally via `plugin.BuildHealthPlugins()`
-- [ ] `cmd/stratum/main.go` activates the database health plugin via a blank import — no manual construction
-- [ ] All existing unit and E2E tests pass
-- [ ] 100% statement coverage on all `internal/` packages
+- [x] `plugin.RegisterHealthPlugin(f func() plugin.HealthPlugin)` and `plugin.BuildHealthPlugins() []plugin.HealthPlugin` exist, backed by a `plugin.Registry`-based health registry
+- [x] `internal/plugin/database` self-registers via `init()` — returning `nil` from the factory when `STRATUM_DATABASE_URL` is not set
+- [x] `NewStratumServer` no longer accepts `HealthPlugin` as a variadic argument; health plugins are wired internally via `plugin.BuildHealthPlugins()`
+- [x] `cmd/stratum/main.go` activates the database health plugin via a blank import — no manual construction
+- [x] All existing unit and E2E tests pass
+- [x] 100% statement coverage on all `internal/` packages
 
 ## E2E Tests
 

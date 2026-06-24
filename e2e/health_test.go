@@ -77,10 +77,15 @@ func TestLivenessOK(t *testing.T) {
 }
 
 func TestReadinessOK(t *testing.T) {
-	srv := server.NewStratumServer(
-		stubHealthPlugin{"database", plugin.StatusOK},
-		stubHealthPlugin{"cache", plugin.StatusOK},
-	)
+	restore := plugin.ResetHealthRegistryForTesting()
+	t.Cleanup(restore)
+	plugin.RegisterHealthPlugin(func() plugin.HealthPlugin {
+		return stubHealthPlugin{"database", plugin.StatusOK}
+	})
+	plugin.RegisterHealthPlugin(func() plugin.HealthPlugin {
+		return stubHealthPlugin{"cache", plugin.StatusOK}
+	})
+	srv := server.NewStratumServer()
 	handler := server.Handler(srv)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/health/ready", nil)
@@ -110,10 +115,15 @@ func TestReadinessOK(t *testing.T) {
 }
 
 func TestReadinessDegraded(t *testing.T) {
-	srv := server.NewStratumServer(
-		stubHealthPlugin{"database", plugin.StatusOK},
-		stubHealthPlugin{"cache", plugin.StatusError},
-	)
+	restore := plugin.ResetHealthRegistryForTesting()
+	t.Cleanup(restore)
+	plugin.RegisterHealthPlugin(func() plugin.HealthPlugin {
+		return stubHealthPlugin{"database", plugin.StatusOK}
+	})
+	plugin.RegisterHealthPlugin(func() plugin.HealthPlugin {
+		return stubHealthPlugin{"cache", plugin.StatusError}
+	})
+	srv := server.NewStratumServer()
 	handler := server.Handler(srv)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/health/ready", nil)
