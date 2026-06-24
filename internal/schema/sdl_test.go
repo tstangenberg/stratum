@@ -18,6 +18,8 @@
 package schema_test
 
 import (
+	"errors"
+	"strings"
 	"testing"
 
 	"github.com/tstangenberg/stratum/internal/schema"
@@ -83,6 +85,68 @@ func TestParseSDL_InvalidSDL(t *testing.T) {
 	_, err := schema.ParseSDL(`type { broken`)
 	if err == nil {
 		t.Fatal("expected error for invalid SDL")
+	}
+}
+
+func TestParseSDL_InvalidSDL_ReturnsValidationError(t *testing.T) {
+	_, err := schema.ParseSDL(`type { broken`)
+	if err == nil {
+		t.Fatal("expected error for invalid SDL")
+	}
+
+	var ve *schema.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("expected *schema.ValidationError, got %T: %v", err, err)
+	}
+	if len(ve.Details) == 0 {
+		t.Fatal("expected at least one detail in ValidationError")
+	}
+	d := ve.Details[0]
+	if d.Line == 0 {
+		t.Error("expected non-zero Line in detail")
+	}
+	if d.Column == 0 {
+		t.Error("expected non-zero Column in detail")
+	}
+	if d.Message == "" {
+		t.Error("expected non-empty Message in detail")
+	}
+}
+
+func TestParseSDL_EmptySDL_ReturnsValidationError(t *testing.T) {
+	_, err := schema.ParseSDL("")
+	if err == nil {
+		t.Fatal("expected error for empty SDL")
+	}
+
+	var ve *schema.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("expected *schema.ValidationError, got %T: %v", err, err)
+	}
+}
+
+func TestValidationError_Error_WithDetails(t *testing.T) {
+	_, err := schema.ParseSDL(`type { broken`)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	msg := err.Error()
+	if msg == "" {
+		t.Fatal("expected non-empty error message")
+	}
+	if !strings.Contains(msg, "line") {
+		t.Errorf("expected error message to contain 'line', got %q", msg)
+	}
+}
+
+func TestValidationError_Error_NoDetails(t *testing.T) {
+	_, err := schema.ParseSDL("")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	msg := err.Error()
+	if msg != "schema: sdl is empty" {
+		t.Errorf("expected %q, got %q", "schema: sdl is empty", msg)
 	}
 }
 

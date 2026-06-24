@@ -18,7 +18,9 @@
 package schema
 
 import (
+	"fmt"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -40,6 +42,32 @@ type FieldDef struct {
 	NonNull    bool
 	IsRelation bool // true when Type refers to another object type.
 	IsList     bool // true for list relations [OtherType] (1:N).
+}
+
+// ValidationDetail holds line/column information for a single validation error.
+type ValidationDetail struct {
+	Line    int
+	Column  int
+	Message string
+}
+
+// ValidationError is returned by ParseSDL when the SDL is syntactically or
+// semantically invalid. It carries per-error location details.
+type ValidationError struct {
+	Msg     string
+	Details []ValidationDetail
+}
+
+func (e *ValidationError) Error() string {
+	if len(e.Details) == 0 {
+		return e.Msg
+	}
+	var b strings.Builder
+	b.WriteString(e.Msg)
+	for _, d := range e.Details {
+		fmt.Fprintf(&b, "\n  line %d, column %d: %s", d.Line, d.Column, d.Message)
+	}
+	return b.String()
 }
 
 // Schema is a stored, live schema with its metadata and active GraphQL handler.

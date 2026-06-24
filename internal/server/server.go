@@ -195,12 +195,23 @@ func (s *StratumServer) UpsertSchema(ctx context.Context, req api.UpsertSchemaRe
 
 	ps, err := schema.ParseSDL(req.Body.Sdl)
 	if err != nil {
-		return api.UpsertSchema422JSONResponse{
-			ValidationErrorJSONResponse: api.ValidationErrorJSONResponse{
-				Error:   "validation_failed",
-				Message: err.Error(),
-			},
-		}, nil
+		resp := api.ValidationErrorJSONResponse{
+			Error:   "validation_failed",
+			Message: err.Error(),
+		}
+		var ve *schema.ValidationError
+		if errors.As(err, &ve) && len(ve.Details) > 0 {
+			details := make([]api.ErrorDetail, len(ve.Details))
+			for i, d := range ve.Details {
+				details[i] = api.ErrorDetail{
+					Line:    intPtr(d.Line),
+					Column:  intPtr(d.Column),
+					Message: strPtr(d.Message),
+				}
+			}
+			resp.Details = &details
+		}
+		return api.UpsertSchema422JSONResponse{ValidationErrorJSONResponse: resp}, nil
 	}
 
 	for _, t := range ps.Types {
@@ -320,3 +331,6 @@ func buildChain(middlewares []plugin.HTTPMiddleware, mux http.Handler) http.Hand
 func isHealthEndpoint(path string) bool {
 	return path == "/api/v1/health/live" || path == "/api/v1/health/ready"
 }
+
+func intPtr(v int) *int       { return &v }
+func strPtr(v string) *string { return &v }

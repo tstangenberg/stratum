@@ -1159,3 +1159,172 @@ func TestSchemaNullableFields(t *testing.T) {
 		t.Errorf("create-full: description = %q, want %q", *fullResult.Data.Article.Create.Description, "Has content")
 	}
 }
+
+func TestSchemaValidationSyntaxError(t *testing.T) {
+	ctx := context.Background()
+
+	pgc, err := postgres.Run(ctx, "postgres:16-alpine",
+		postgres.WithDatabase("stratum"),
+		postgres.WithUsername("stratum"),
+		postgres.WithPassword("stratum"),
+		testcontainers.WithWaitStrategy(
+			wait.ForLog("database system is ready to accept connections").
+				WithOccurrence(2).
+				WithStartupTimeout(30*time.Second),
+		),
+	)
+	if err != nil {
+		t.Fatalf("start postgres: %v", err)
+	}
+	t.Cleanup(func() { _ = pgc.Terminate(ctx) })
+
+	dsn, err := pgc.ConnectionString(ctx, "sslmode=disable")
+	if err != nil {
+		t.Fatalf("connection string: %v", err)
+	}
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		t.Fatalf("connect pool: %v", err)
+	}
+	t.Cleanup(pool.Close)
+
+	handler := server.Handler(server.NewStratumServer().WithDB(pool))
+
+	// ── 1. Upload invalid SDL with syntax error → 422 ──────────────────────
+	sdl := `type { broken`
+	body, _ := json.Marshal(api.SchemaUploadRequest{Sdl: sdl})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/schemas/broken",
+		bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("syntax error: expected 422, got %d — body: %s", w.Code, w.Body.String())
+	}
+
+	var errResp struct {
+		Error   string `json:"error"`
+		Message string `json:"message"`
+		Details []struct {
+			Line    *int    `json:"line"`
+			Column  *int    `json:"column"`
+			Message *string `json:"message"`
+		} `json:"details"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&errResp); err != nil {
+		t.Fatalf("syntax error: decode: %v", err)
+	}
+	if errResp.Error != "validation_failed" {
+		t.Errorf("syntax error: error = %q, want %q", errResp.Error, "validation_failed")
+	}
+	if len(errResp.Details) == 0 {
+		t.Fatal("syntax error: expected details with line and column, got none")
+	}
+	if errResp.Details[0].Line == nil {
+		t.Error("syntax error: details[0].line is nil, want non-nil")
+	}
+	if errResp.Details[0].Column == nil {
+		t.Error("syntax error: details[0].column is nil, want non-nil")
+	}
+
+	// ── 2. Empty SDL → 422 ─────────────────────────────────────────────────
+	emptyBody, _ := json.Marshal(api.SchemaUploadRequest{Sdl: ""})
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/schemas/broken",
+		bytes.NewReader(emptyBody))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("empty SDL: expected 422, got %d — body: %s", w.Code, w.Body.String())
+	}
+
+	// ── 3. Database unchanged after rejected schema ────────────────────────
+	var tableCount int
+	err = pool.QueryRow(ctx,
+		`SELECT count(*) FROM information_schema.tables
+		 WHERE table_name LIKE 'broken_%'`).Scan(&tableCount)
+	if err != nil {
+		t.Fatalf("table count query: %v", err)
+	}
+	if tableCount != 0 {
+		t.Errorf("expected 0 tables after rejected schema, got %d", tableCount)
+	}
+
+	// ── 4. Valid upload after failed upload succeeds ────────────────────────
+	validSDL := `type Item { id: ID! name: String! }`
+	validBody, _ := json.Marshal(api.SchemaUploadRequest{Sdl: validSDL})
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/schemas/broken",
+		bytes.NewReader(validBody))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("valid after failed: expected 200, got %d — body: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestSchemaValidationUnknownDirective(t *testing.T) {
+	ctx := context.Background()
+
+	pgc, err := postgres.Run(ctx, "postgres:16-alpine",
+		postgres.WithDatabase("stratum"),
+		postgres.WithUsername("stratum"),
+		postgres.WithPassword("stratum"),
+		testcontainers.WithWaitStrategy(
+			wait.ForLog("database system is ready to accept connections").
+				WithOccurrence(2).
+				WithStartupTimeout(30*time.Second),
+		),
+	)
+	if err != nil {
+		t.Fatalf("start postgres: %v", err)
+	}
+	t.Cleanup(func() { _ = pgc.Terminate(ctx) })
+
+	dsn, err := pgc.ConnectionString(ctx, "sslmode=disable")
+	if err != nil {
+		t.Fatalf("connection string: %v", err)
+	}
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		t.Fatalf("connect pool: %v", err)
+	}
+	t.Cleanup(pool.Close)
+
+	handler := server.Handler(server.NewStratumServer().WithDB(pool))
+
+	// ── 1. Upload SDL with unknown directive → 422 ─────────────────────────
+	sdl := `type Location @deprecated(reason: "test") { id: ID! name: String! }`
+	body, _ := json.Marshal(api.SchemaUploadRequest{Sdl: sdl})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/schemas/directives",
+		bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("unknown directive: expected 422, got %d — body: %s", w.Code, w.Body.String())
+	}
+
+	var errResp struct {
+		Error   string `json:"error"`
+		Message string `json:"message"`
+		Details []struct {
+			Line    *int    `json:"line"`
+			Column  *int    `json:"column"`
+			Message *string `json:"message"`
+		} `json:"details"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&errResp); err != nil {
+		t.Fatalf("unknown directive: decode: %v", err)
+	}
+	if errResp.Error != "validation_failed" {
+		t.Errorf("unknown directive: error = %q, want %q", errResp.Error, "validation_failed")
+	}
+	if !strings.Contains(errResp.Message, "deprecated") {
+		t.Errorf("unknown directive: message = %q, expected it to mention the directive name", errResp.Message)
+	}
+}

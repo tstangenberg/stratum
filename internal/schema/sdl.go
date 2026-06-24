@@ -18,12 +18,14 @@
 package schema
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
 
 	"github.com/vektah/gqlparser/v2"
 	"github.com/vektah/gqlparser/v2/ast"
+	"github.com/vektah/gqlparser/v2/gqlerror"
 )
 
 func isBuiltinType(name string) bool {
@@ -42,12 +44,12 @@ func isBuiltinType(name string) bool {
 // Returns an error if the SDL is invalid or defines no object types.
 func ParseSDL(sdl string) (*ParsedSchema, error) {
 	if strings.TrimSpace(sdl) == "" {
-		return nil, fmt.Errorf("schema: sdl is empty")
+		return nil, &ValidationError{Msg: "schema: sdl is empty"}
 	}
 	src := &ast.Source{Name: "user", Input: sdl}
 	gqlSchema, err := gqlparser.LoadSchema(src)
 	if err != nil {
-		return nil, fmt.Errorf("schema: parse sdl: %w", err)
+		return nil, toValidationError(err)
 	}
 
 	userTypes := make(map[string]bool)
@@ -144,4 +146,22 @@ func sortedKeys(m map[string]TypeDef) []string {
 	}
 	sort.Strings(keys)
 	return keys
+}
+
+// toValidationError converts a gqlparser error into a *ValidationError with
+// per-error location details.
+func toValidationError(err error) *ValidationError {
+	var gqlErr *gqlerror.Error
+	if errors.As(err, &gqlErr) {
+		d := ValidationDetail{Message: gqlErr.Message}
+		if len(gqlErr.Locations) > 0 {
+			d.Line = gqlErr.Locations[0].Line
+			d.Column = gqlErr.Locations[0].Column
+		}
+		return &ValidationError{
+			Msg:     "schema: parse sdl: " + gqlErr.Message,
+			Details: []ValidationDetail{d},
+		}
+	}
+	return &ValidationError{Msg: fmt.Sprintf("schema: parse sdl: %s", err)}
 }

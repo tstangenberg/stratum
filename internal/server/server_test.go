@@ -267,6 +267,48 @@ func TestUpsertSchema_InvalidSDL(t *testing.T) {
 	}
 }
 
+func TestUpsertSchema_InvalidSDL_DetailsPopulated(t *testing.T) {
+	pool := new(pgxpool.Pool)
+	srv := NewStratumServer().WithDB(pool)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/schemas/locations",
+		strings.NewReader(`{"sdl":"type { broken"}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	Handler(srv).ServeHTTP(w, req)
+	if w.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("expected 422, got %d", w.Code)
+	}
+
+	var body struct {
+		Error   string `json:"error"`
+		Message string `json:"message"`
+		Details []struct {
+			Line    *int    `json:"line,omitempty"`
+			Column  *int    `json:"column,omitempty"`
+			Message *string `json:"message,omitempty"`
+		} `json:"details"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&body); err != nil {
+		t.Fatalf("response body not valid JSON: %v", err)
+	}
+	if body.Error != "validation_failed" {
+		t.Errorf("error = %q, want %q", body.Error, "validation_failed")
+	}
+	if len(body.Details) == 0 {
+		t.Fatal("expected at least one detail in 422 response")
+	}
+	d := body.Details[0]
+	if d.Line == nil || *d.Line == 0 {
+		t.Error("expected non-zero line in first detail")
+	}
+	if d.Column == nil || *d.Column == 0 {
+		t.Error("expected non-zero column in first detail")
+	}
+	if d.Message == nil || *d.Message == "" {
+		t.Error("expected non-empty message in first detail")
+	}
+}
+
 func TestServeGraphQL_NotFound(t *testing.T) {
 	srv := NewStratumServer()
 	req := httptest.NewRequest(http.MethodPost, "/graphql/nonexistent",
