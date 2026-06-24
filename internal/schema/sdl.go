@@ -86,7 +86,7 @@ func ParseSDL(sdl string) (*ParsedSchema, error) {
 	}
 
 	if len(byName) == 0 {
-		return nil, fmt.Errorf("schema: sdl defines no object types")
+		return nil, &ValidationError{Msg: "schema: sdl defines no object types"}
 	}
 
 	sorted, err := topoSort(byName)
@@ -148,20 +148,25 @@ func sortedKeys(m map[string]TypeDef) []string {
 	return keys
 }
 
-// toValidationError converts a gqlparser error into a *ValidationError with
-// per-error location details.
 func toValidationError(err error) *ValidationError {
 	var gqlErr *gqlerror.Error
 	if errors.As(err, &gqlErr) {
-		d := ValidationDetail{Message: gqlErr.Message}
-		if len(gqlErr.Locations) > 0 {
-			d.Line = gqlErr.Locations[0].Line
-			d.Column = gqlErr.Locations[0].Column
+		var details []ValidationDetail
+		for _, loc := range gqlErr.Locations {
+			details = append(details, ValidationDetail{
+				Line:    loc.Line,
+				Column:  loc.Column,
+				Message: gqlErr.Message,
+			})
+		}
+		if len(details) == 0 {
+			details = []ValidationDetail{{Message: gqlErr.Message}}
 		}
 		return &ValidationError{
-			Msg:     "schema: parse sdl: " + gqlErr.Message,
-			Details: []ValidationDetail{d},
+			Msg:     "schema: parse sdl",
+			Details: details,
+			cause:   gqlErr,
 		}
 	}
-	return &ValidationError{Msg: fmt.Sprintf("schema: parse sdl: %s", err)}
+	return &ValidationError{Msg: "schema: parse sdl: " + err.Error(), cause: err}
 }

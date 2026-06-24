@@ -1297,7 +1297,7 @@ func TestSchemaValidationUnknownDirective(t *testing.T) {
 	handler := server.Handler(server.NewStratumServer().WithDB(pool))
 
 	// ── 1. Upload SDL with unknown directive → 422 ─────────────────────────
-	sdl := `type Location @deprecated(reason: "test") { id: ID! name: String! }`
+	sdl := `type Location @unknown { id: ID! name: String! }`
 	body, _ := json.Marshal(api.SchemaUploadRequest{Sdl: sdl})
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/schemas/directives",
 		bytes.NewReader(body))
@@ -1324,7 +1324,7 @@ func TestSchemaValidationUnknownDirective(t *testing.T) {
 	if errResp.Error != "validation_failed" {
 		t.Errorf("unknown directive: error = %q, want %q", errResp.Error, "validation_failed")
 	}
-	if !strings.Contains(errResp.Message, "deprecated") {
+	if !strings.Contains(errResp.Message, "@unknown") {
 		t.Errorf("unknown directive: message = %q, expected it to mention the directive name", errResp.Message)
 	}
 }

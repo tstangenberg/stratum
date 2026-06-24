@@ -156,6 +156,10 @@ func TestParseSDL_NoObjectTypes(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error when SDL has no non-builtin object types")
 	}
+	var ve *schema.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("expected *schema.ValidationError, got %T: %v", err, err)
+	}
 }
 
 func TestParseSDL_RelationField(t *testing.T) {

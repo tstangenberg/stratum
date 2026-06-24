@@ -44,19 +44,19 @@ type FieldDef struct {
 	IsList     bool // true for list relations [OtherType] (1:N).
 }
 
-// ValidationDetail holds line/column information for a single validation error.
 type ValidationDetail struct {
 	Line    int
 	Column  int
 	Message string
 }
 
-// ValidationError is returned by ParseSDL when the SDL is syntactically or
-// semantically invalid. It carries per-error location details.
 type ValidationError struct {
 	Msg     string
 	Details []ValidationDetail
+	cause   error
 }
+
+func (e *ValidationError) Unwrap() error { return e.cause }
 
 func (e *ValidationError) Error() string {
 	if len(e.Details) == 0 {
@@ -64,8 +64,17 @@ func (e *ValidationError) Error() string {
 	}
 	var b strings.Builder
 	b.WriteString(e.Msg)
-	for _, d := range e.Details {
-		fmt.Fprintf(&b, "\n  line %d, column %d: %s", d.Line, d.Column, d.Message)
+	for i, d := range e.Details {
+		if i == 0 {
+			b.WriteString(": ")
+		} else {
+			b.WriteString("; ")
+		}
+		if d.Line != 0 {
+			fmt.Fprintf(&b, "line %d, column %d: %s", d.Line, d.Column, d.Message)
+		} else {
+			b.WriteString(d.Message)
+		}
 	}
 	return b.String()
 }
