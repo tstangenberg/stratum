@@ -18,17 +18,14 @@
 package main
 
 import (
-	"context"
 	"log"
 	"net/http"
 	"os"
 
-	"github.com/jackc/pgx/v5/pgxpool"
-
 	"github.com/tstangenberg/stratum/internal/config"
 	"github.com/tstangenberg/stratum/internal/plugin"
 	_ "github.com/tstangenberg/stratum/internal/plugin/auth/apikey"
-	_ "github.com/tstangenberg/stratum/internal/plugin/database"
+	dbplugin "github.com/tstangenberg/stratum/internal/plugin/database"
 	"github.com/tstangenberg/stratum/internal/server"
 )
 
@@ -51,28 +48,14 @@ func main() {
 }
 
 func run(addr string) error {
-	pool := connectDB()
-	if pool != nil {
-		defer pool.Close()
-	}
 	srv := server.NewStratumServer()
+	pool := dbplugin.Pool()
 	if pool != nil {
+		defer dbplugin.ClosePool()
 		srv = srv.WithDB(pool)
+	} else {
+		log.Printf("STRATUM_DATABASE_URL not set; schema operations disabled")
 	}
 	srv = srv.WithMiddlewares(plugin.BuildMiddlewares()...)
 	return http.ListenAndServe(addr, server.Handler(srv))
-}
-
-func connectDB() *pgxpool.Pool {
-	dsn := os.Getenv("STRATUM_DATABASE_URL")
-	if dsn == "" {
-		log.Printf("STRATUM_DATABASE_URL not set; schema operations disabled")
-		return nil
-	}
-	pool, err := pgxpool.New(context.Background(), dsn)
-	if err != nil {
-		log.Printf("failed to create pgxpool: %v", err)
-		return nil
-	}
-	return pool
 }

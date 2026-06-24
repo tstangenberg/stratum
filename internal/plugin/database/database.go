@@ -28,13 +28,20 @@ import (
 )
 
 func init() {
-	plugin.RegisterHealthPlugin(func() plugin.HealthPlugin {
-		if p := FromEnv(); p != nil {
-			return p
-		}
-		return nil
-	})
+	plugin.RegisterHealthPlugin(Factory)
 }
+
+// Factory returns a HealthPlugin for database connectivity.
+// Returns nil when STRATUM_DATABASE_URL is not set.
+func Factory() plugin.HealthPlugin {
+	if p := FromEnv(); p != nil {
+		return p
+	}
+	return nil
+}
+
+// createdPool holds the pool created by FromEnv so callers can share it.
+var createdPool *pgxpool.Pool
 
 // credentialsPattern matches the user:password portion of a DSN URL.
 var credentialsPattern = regexp.MustCompile(`://[^:@/]+:[^@/]*@`)
@@ -55,7 +62,8 @@ func New(db Pinger) *Plugin {
 }
 
 // FromEnv creates a Plugin from the STRATUM_DATABASE_URL environment variable.
-// Returns nil when the variable is not set.
+// Returns nil when the variable is not set. The created pool is stored and
+// available via Pool().
 func FromEnv() *Plugin {
 	dsn := os.Getenv("STRATUM_DATABASE_URL")
 	if dsn == "" {
@@ -65,7 +73,21 @@ func FromEnv() *Plugin {
 	if err != nil {
 		return nil
 	}
+	createdPool = pool
 	return &Plugin{db: pool}
+}
+
+// Pool returns the connection pool created by FromEnv, or nil.
+func Pool() *pgxpool.Pool {
+	return createdPool
+}
+
+// ClosePool closes the connection pool created by FromEnv, if any.
+func ClosePool() {
+	if createdPool != nil {
+		createdPool.Close()
+		createdPool = nil
+	}
 }
 
 func (p *Plugin) Name() string { return "database" }
