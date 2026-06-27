@@ -18,12 +18,14 @@
 package schema
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
 
 	"github.com/vektah/gqlparser/v2"
 	"github.com/vektah/gqlparser/v2/ast"
+	"github.com/vektah/gqlparser/v2/gqlerror"
 )
 
 func isBuiltinType(name string) bool {
@@ -42,12 +44,12 @@ func isBuiltinType(name string) bool {
 // Returns an error if the SDL is invalid or defines no object types.
 func ParseSDL(sdl string) (*ParsedSchema, error) {
 	if strings.TrimSpace(sdl) == "" {
-		return nil, fmt.Errorf("schema: sdl is empty")
+		return nil, &ValidationError{Msg: "schema: sdl is empty"}
 	}
 	src := &ast.Source{Name: "user", Input: sdl}
 	gqlSchema, err := gqlparser.LoadSchema(src)
 	if err != nil {
-		return nil, fmt.Errorf("schema: parse sdl: %w", err)
+		return nil, toValidationError(err)
 	}
 
 	userTypes := make(map[string]bool)
@@ -84,12 +86,12 @@ func ParseSDL(sdl string) (*ParsedSchema, error) {
 	}
 
 	if len(byName) == 0 {
-		return nil, fmt.Errorf("schema: sdl defines no object types")
+		return nil, &ValidationError{Msg: "schema: sdl defines no object types"}
 	}
 
 	sorted, err := topoSort(byName)
 	if err != nil {
-		return nil, err
+		return nil, &ValidationError{Msg: err.Error(), cause: err}
 	}
 	return &ParsedSchema{Types: sorted}, nil
 }
@@ -144,4 +146,36 @@ func sortedKeys(m map[string]TypeDef) []string {
 	}
 	sort.Strings(keys)
 	return keys
+}
+
+func toValidationError(err error) *ValidationError {
+	if list, ok := err.(gqlerror.List); ok {
+		var details []ValidationDetail
+		for _, e := range list {
+			for _, loc := range e.Locations {
+				details = append(details, ValidationDetail{
+					Line:    loc.Line,
+					Column:  loc.Column,
+					Message: e.Message,
+				})
+			}
+			if len(e.Locations) == 0 {
+				details = append(details, ValidationDetail{Message: e.Message})
+			}
+		}
+		return &ValidationError{Msg: "schema: parse sdl", Details: details, cause: err}
+	}
+	var gqlErr *gqlerror.Error
+	if errors.As(err, &gqlErr) {
+		var details []ValidationDetail
+		for _, loc := range gqlErr.Locations {
+			details = append(details, ValidationDetail{
+				Line:    loc.Line,
+				Column:  loc.Column,
+				Message: gqlErr.Message,
+			})
+		}
+		return &ValidationError{Msg: "schema: parse sdl", Details: details, cause: gqlErr}
+	}
+	return &ValidationError{Msg: "schema: parse sdl: " + err.Error(), cause: err}
 }

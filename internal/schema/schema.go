@@ -18,7 +18,9 @@
 package schema
 
 import (
+	"fmt"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -40,6 +42,41 @@ type FieldDef struct {
 	NonNull    bool
 	IsRelation bool // true when Type refers to another object type.
 	IsList     bool // true for list relations [OtherType] (1:N).
+}
+
+type ValidationDetail struct {
+	Line    int
+	Column  int
+	Message string
+}
+
+type ValidationError struct {
+	Msg     string
+	Details []ValidationDetail
+	cause   error
+}
+
+func (e *ValidationError) Unwrap() error { return e.cause }
+
+func (e *ValidationError) Error() string {
+	if len(e.Details) == 0 {
+		return e.Msg
+	}
+	var b strings.Builder
+	b.WriteString(e.Msg)
+	for i, d := range e.Details {
+		if i == 0 {
+			b.WriteString(": ")
+		} else {
+			b.WriteString("; ")
+		}
+		if d.Line != 0 {
+			fmt.Fprintf(&b, "line %d, column %d: %s", d.Line, d.Column, d.Message)
+		} else {
+			b.WriteString(d.Message)
+		}
+	}
+	return b.String()
 }
 
 // Schema is a stored, live schema with its metadata and active GraphQL handler.

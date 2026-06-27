@@ -1,7 +1,7 @@
 ---
 id: US-018
 tags: [schema]
-status: ready
+status: done
 ---
 
 # US-0018: Schema validation — invalid SDL rejected
@@ -16,11 +16,11 @@ Validation runs before any migration. A rejected schema never touches the databa
 
 ## Acceptance Criteria
 
-- [ ] SDL with a syntax error returns HTTP 422 with `error: "validation_failed"` and `details` containing `line` and `column`
-- [ ] SDL referencing an unknown directive returns HTTP 422 with a descriptive message identifying the directive name
-- [ ] Empty SDL body returns HTTP 422
-- [ ] A valid schema that was previously rejected leaves the database unchanged
-- [ ] A valid schema upload after a failed upload succeeds normally
+- [x] SDL with a syntax error returns HTTP 422 with `error: "validation_failed"` and `details` containing `line` and `column`
+- [x] SDL referencing an unknown directive returns HTTP 422 with a descriptive message identifying the directive name
+- [x] Empty SDL body returns HTTP 422
+- [x] A valid schema that was previously rejected leaves the database unchanged
+- [x] A valid schema upload after a failed upload succeeds normally
 
 ## E2E Tests
 
