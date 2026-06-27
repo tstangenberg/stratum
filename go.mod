@@ -1,6 +1,6 @@
 module github.com/tstangenberg/stratum
 
-go 1.26.2
+go 1.26.4
 
 require (
 	github.com/graphql-go/graphql v0.8.1
