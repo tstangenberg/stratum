@@ -309,6 +309,27 @@ func TestUpsertSchema_InvalidSDL_DetailsPopulated(t *testing.T) {
 	}
 }
 
+func TestUpsertSchema_EmptySDL_NoDetailsField(t *testing.T) {
+	pool := new(pgxpool.Pool)
+	srv := NewStratumServer().WithDB(pool)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/schemas/test",
+		strings.NewReader(`{"sdl":""}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	Handler(srv).ServeHTTP(w, req)
+	if w.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("expected 422, got %d", w.Code)
+	}
+
+	var body map[string]json.RawMessage
+	if err := json.NewDecoder(w.Body).Decode(&body); err != nil {
+		t.Fatalf("response body not valid JSON: %v", err)
+	}
+	if _, ok := body["details"]; ok {
+		t.Errorf("expected details field to be absent for no-location error, got %s", body["details"])
+	}
+}
+
 func TestServeGraphQL_NotFound(t *testing.T) {
 	srv := NewStratumServer()
 	req := httptest.NewRequest(http.MethodPost, "/graphql/nonexistent",

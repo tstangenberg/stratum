@@ -200,8 +200,8 @@ func (s *StratumServer) UpsertSchema(ctx context.Context, req api.UpsertSchemaRe
 			Message: err.Error(),
 		}
 		var ve *schema.ValidationError
-		details := make([]api.ErrorDetail, 0)
 		if errors.As(err, &ve) {
+			var details []api.ErrorDetail
 			for _, d := range ve.Details {
 				det := api.ErrorDetail{Message: strPtr(d.Message)}
 				if d.Line != 0 {
@@ -212,8 +212,10 @@ func (s *StratumServer) UpsertSchema(ctx context.Context, req api.UpsertSchemaRe
 				}
 				details = append(details, det)
 			}
+			if len(details) > 0 {
+				resp.Details = &details
+			}
 		}
-		resp.Details = &details
 		return api.UpsertSchema422JSONResponse{ValidationErrorJSONResponse: resp}, nil
 	}
 

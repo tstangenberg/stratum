@@ -280,6 +280,10 @@ func TestParseSDL_CircularRelation(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for circular relation")
 	}
+	var ve *schema.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("expected *schema.ValidationError, got %T: %v", err, err)
+	}
 }
 
 func TestParseSDL_ListRelation(t *testing.T) {

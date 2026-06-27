@@ -91,7 +91,7 @@ func ParseSDL(sdl string) (*ParsedSchema, error) {
 
 	sorted, err := topoSort(byName)
 	if err != nil {
-		return nil, err
+		return nil, &ValidationError{Msg: err.Error(), cause: err}
 	}
 	return &ParsedSchema{Types: sorted}, nil
 }
@@ -149,6 +149,22 @@ func sortedKeys(m map[string]TypeDef) []string {
 }
 
 func toValidationError(err error) *ValidationError {
+	if list, ok := err.(gqlerror.List); ok {
+		var details []ValidationDetail
+		for _, e := range list {
+			for _, loc := range e.Locations {
+				details = append(details, ValidationDetail{
+					Line:    loc.Line,
+					Column:  loc.Column,
+					Message: e.Message,
+				})
+			}
+			if len(e.Locations) == 0 {
+				details = append(details, ValidationDetail{Message: e.Message})
+			}
+		}
+		return &ValidationError{Msg: "schema: parse sdl", Details: details, cause: err}
+	}
 	var gqlErr *gqlerror.Error
 	if errors.As(err, &gqlErr) {
 		var details []ValidationDetail
@@ -159,11 +175,7 @@ func toValidationError(err error) *ValidationError {
 				Message: gqlErr.Message,
 			})
 		}
-		return &ValidationError{
-			Msg:     "schema: parse sdl",
-			Details: details,
-			cause:   gqlErr,
-		}
+		return &ValidationError{Msg: "schema: parse sdl", Details: details, cause: gqlErr}
 	}
 	return &ValidationError{Msg: "schema: parse sdl: " + err.Error(), cause: err}
 }
