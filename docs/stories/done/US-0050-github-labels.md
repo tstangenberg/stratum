@@ -1,7 +1,7 @@
 ---
 id: US-0050
 tags: [community, launch]
-status: ready
+status: done
 ---
 
 # US-0050: Set up GitHub labels
@@ -16,7 +16,7 @@ GitHub's default labels are generic. A curated label set helps contributors find
 
 ## Acceptance Criteria
 
-- [ ] The following labels exist on the repository with the specified colours:
+- [x] The following labels exist on the repository with the specified colours:
 
   | Label | Colour | Purpose |
   |---|---|---|
@@ -40,7 +40,7 @@ GitHub's default labels are generic. A curated label set helps contributors find
   | `duplicate` | #cfd3d7 | Same issue reported elsewhere — link to the original |
   | `invalid` | #e4e4e4 | Not a valid issue — wrong repo, spam, or not reproducible |
 
-- [ ] GitHub's default `good first issue`, `help wanted`, `bug`, `enhancement`, `documentation`, `duplicate`, `question`, `invalid`, and `wontfix` labels are updated in-place (edit colour and description) to match the curated values above — do not delete and recreate, to preserve any existing label references
+- [x] GitHub's default `good first issue`, `help wanted`, `bug`, `enhancement`, `documentation`, `duplicate`, `question`, `invalid`, and `wontfix` labels are updated in-place (edit colour and description) to match the curated values above — do not delete and recreate, to preserve any existing label references
 
 ## When to use
 
@@ -88,7 +88,7 @@ GitHub's default labels are generic. A curated label set helps contributors find
 | `duplicate` | The same issue was reported elsewhere — link to the original before closing |
 | `invalid` | The issue is not valid — wrong repo, spam, or cannot be reproduced after follow-up |
 
-- [ ] The "when to use" label guide is added to `CONTRIBUTING.md`
+- [x] The "when to use" label guide is added to `CONTRIBUTING.md`
 
 ## E2E Tests
 
