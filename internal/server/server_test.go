@@ -554,3 +554,108 @@ func TestNoMiddlewareSkipsAuth(t *testing.T) {
 		t.Fatalf("expected 200 with no middleware, got %d", w.Code)
 	}
 }
+
+func TestHealthStatus_NoPlugins(t *testing.T) {
+	restore := plugin.ResetHealthRegistryForTesting()
+	t.Cleanup(restore)
+	srv := NewStratumServer()
+	result := srv.HealthStatus(context.Background())
+
+	if result.Liveness != "ok" {
+		t.Errorf("Liveness = %q, want %q", result.Liveness, "ok")
+	}
+	if result.Readiness != "ok" {
+		t.Errorf("Readiness = %q, want %q", result.Readiness, "ok")
+	}
+}
+
+func TestHealthStatus_WithPlugins(t *testing.T) {
+	restore := plugin.ResetHealthRegistryForTesting()
+	t.Cleanup(restore)
+	plugin.RegisterHealthPlugin(func() plugin.HealthPlugin {
+		return stubHealthPlugin{"database", plugin.StatusOK, nil}
+	})
+	plugin.RegisterHealthPlugin(func() plugin.HealthPlugin {
+		return stubHealthPlugin{"cache", plugin.StatusError, nil}
+	})
+	srv := NewStratumServer()
+	result := srv.HealthStatus(context.Background())
+
+	if result.Liveness != "ok" {
+		t.Errorf("Liveness = %q, want %q", result.Liveness, "ok")
+	}
+	if result.Readiness != "degraded" {
+		t.Errorf("Readiness = %q, want %q", result.Readiness, "degraded")
+	}
+	if result.Components["database"] != "ok" {
+		t.Errorf("database component = %q, want %q", result.Components["database"], "ok")
+	}
+	if result.Components["cache"] != "error" {
+		t.Errorf("cache component = %q, want %q", result.Components["cache"], "error")
+	}
+}
+
+func TestPlugins(t *testing.T) {
+	restore := plugin.ResetHealthRegistryForTesting()
+	t.Cleanup(restore)
+	plugin.RegisterHealthPlugin(func() plugin.HealthPlugin {
+		return stubHealthPlugin{"database", plugin.StatusOK, nil}
+	})
+	srv := NewStratumServer().
+		WithMiddlewares(stubHTTPMiddleware{name: "api-key-auth", priority: 100, allowed: true})
+	plugins := srv.Plugins()
+
+	found := make(map[string]string)
+	for _, p := range plugins {
+		found[p.Name] = p.Type
+	}
+
+	if found["database"] != "health" {
+		t.Errorf("expected database health plugin, got %v", found)
+	}
+	if found["api-key-auth"] != "middleware" {
+		t.Errorf("expected api-key-auth middleware, got %v", found)
+	}
+	if found["pagination"] != "query-modifier" {
+		t.Errorf("expected pagination query-modifier, got %v", found)
+	}
+	// Default server has 5 eq-filter plugins
+	filterCount := 0
+	for _, p := range plugins {
+		if p.Type == "filter" {
+			filterCount++
+		}
+	}
+	if filterCount != 5 {
+		t.Errorf("expected 5 filter plugins, got %d", filterCount)
+	}
+}
+
+func TestUIMiddlewareExempt(t *testing.T) {
+	srv := NewStratumServer().WithMiddlewares(stubHTTPMiddleware{name: "blocker", priority: 100, allowed: false})
+	handler := Handler(srv)
+
+	req := httptest.NewRequest(http.MethodGet, "/ui/status", nil)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("UI should bypass middleware, got %d", w.Code)
+	}
+}
+
+func TestUIRedirect(t *testing.T) {
+	srv := NewStratumServer()
+	handler := Handler(srv)
+
+	req := httptest.NewRequest(http.MethodGet, "/ui", nil)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusMovedPermanently {
+		t.Fatalf("expected 301, got %d", w.Code)
+	}
+	if loc := w.Header().Get("Location"); loc != "/ui/status" {
+		t.Fatalf("expected Location=/ui/status, got %q", loc)
+	}
+}

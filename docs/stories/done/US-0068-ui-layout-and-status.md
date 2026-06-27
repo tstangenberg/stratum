@@ -1,7 +1,7 @@
 ---
 id: US-0068
 tags: [ui, status, plugins]
-status: ready
+status: done
 ---
 
 # US-0068: UI — Layout und Status-Seite
@@ -35,17 +35,17 @@ internal/ui/
 
 ## Acceptance Criteria
 
-- [ ] `GET /ui` leitet auf `GET /ui/status` weiter (301)
-- [ ] `GET /ui/status` liefert die Status-Seite
-- [ ] Unbekannte Pfade unter `/ui/*` liefern HTTP 404
-- [ ] Die Seite zeigt Sidebar-Navigation mit Links zu Status, Schema, Console
-- [ ] Das Layout enthält ein API-Key-Eingabefeld (Sidebar oder Header), das für alle authentifizierten Operationen genutzt wird
-- [ ] Der eingegebene API-Key wird im Browser gespeichert (localStorage) und bei Seitennavigation wiederhergestellt — manuelle Verifikation, kein E2E-Test
-- [ ] Die Status-Seite zeigt den aktuellen Health-Status (liveness + readiness) — kein API-Key erforderlich
-- [ ] Die Status-Seite listet alle registrierten Plugins mit Name und Typ — kein API-Key erforderlich
-- [ ] Alle Assets sind via `embed.FS` ins Binary eingebettet
-- [ ] Der `UIHandler` registriert sich am `StratumServer` ohne neue externe Dependencies
-- [ ] HTMX wird als eingebettete statische Datei ausgeliefert (kein CDN)
+- [x] `GET /ui` leitet auf `GET /ui/status` weiter (301)
+- [x] `GET /ui/status` liefert die Status-Seite
+- [x] Unbekannte Pfade unter `/ui/*` liefern HTTP 404
+- [x] Die Seite zeigt Sidebar-Navigation mit Links zu Status, Schema, Console
+- [x] Das Layout enthält ein API-Key-Eingabefeld (Sidebar oder Header), das für alle authentifizierten Operationen genutzt wird
+- [x] Der eingegebene API-Key wird im Browser gespeichert (localStorage) und bei Seitennavigation wiederhergestellt — manuelle Verifikation, kein E2E-Test
+- [x] Die Status-Seite zeigt den aktuellen Health-Status (liveness + readiness) — kein API-Key erforderlich
+- [x] Die Status-Seite listet alle registrierten Plugins mit Name und Typ — kein API-Key erforderlich
+- [x] Alle Assets sind via `embed.FS` ins Binary eingebettet
+- [x] Der `UIHandler` registriert sich am `StratumServer` ohne neue externe Dependencies
+- [x] HTMX wird als eingebettete statische Datei ausgeliefert (kein CDN)
 
 ## E2E Tests
 

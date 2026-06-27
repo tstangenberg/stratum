@@ -1,0 +1,49 @@
+{{define "content"}}
+<h1>Status</h1>
+
+<section class="health">
+    <h2>Health</h2>
+    <table>
+        <tr>
+            <td>liveness</td>
+            <td class="status-{{.Health.Liveness}}">{{.Health.Liveness}}</td>
+        </tr>
+        <tr>
+            <td>readiness</td>
+            <td class="status-{{.Health.Readiness}}">{{.Health.Readiness}}</td>
+        </tr>
+    </table>
+
+    {{if .Health.Components}}
+    <h3>Components</h3>
+    <table>
+        {{range $name, $status := .Health.Components}}
+        <tr>
+            <td>{{$name}}</td>
+            <td class="status-{{$status}}">{{$status}}</td>
+        </tr>
+        {{end}}
+    </table>
+    {{end}}
+</section>
+
+<section class="plugins">
+    <h2>Plugins</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Type</th>
+            </tr>
+        </thead>
+        <tbody>
+            {{range .Plugins}}
+            <tr>
+                <td>{{.Name}}</td>
+                <td>{{.Type}}</td>
+            </tr>
+            {{end}}
+        </tbody>
+    </table>
+</section>
+{{end}}
