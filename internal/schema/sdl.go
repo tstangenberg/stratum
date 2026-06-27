@@ -159,9 +159,6 @@ func toValidationError(err error) *ValidationError {
 				Message: gqlErr.Message,
 			})
 		}
-		if len(details) == 0 {
-			details = []ValidationDetail{{Message: gqlErr.Message}}
-		}
 		return &ValidationError{
 			Msg:     "schema: parse sdl",
 			Details: details,

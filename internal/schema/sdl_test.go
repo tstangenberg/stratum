@@ -150,6 +150,45 @@ func TestValidationError_Error_NoDetails(t *testing.T) {
 	}
 }
 
+func TestValidationError_Unwrap(t *testing.T) {
+	_, err := schema.ParseSDL(`type { broken`)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	var ve *schema.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("expected *schema.ValidationError, got %T", err)
+	}
+	if errors.Unwrap(ve) == nil {
+		t.Error("expected non-nil cause from Unwrap")
+	}
+}
+
+func TestValidationError_Error_MultipleDetails(t *testing.T) {
+	ve := &schema.ValidationError{
+		Msg: "schema: parse sdl",
+		Details: []schema.ValidationDetail{
+			{Line: 1, Column: 5, Message: "first error"},
+			{Line: 2, Column: 10, Message: "second error"},
+		},
+	}
+	msg := ve.Error()
+	if !strings.Contains(msg, "; ") {
+		t.Errorf("expected '; ' separator for multiple details, got %q", msg)
+	}
+}
+
+func TestValidationError_Error_DetailNoLocation(t *testing.T) {
+	ve := &schema.ValidationError{
+		Msg:     "schema: parse sdl",
+		Details: []schema.ValidationDetail{{Message: "error without location"}},
+	}
+	msg := ve.Error()
+	if !strings.Contains(msg, "error without location") {
+		t.Errorf("expected message in output, got %q", msg)
+	}
+}
+
 func TestParseSDL_NoObjectTypes(t *testing.T) {
 	// SDL valid but only defines the built-in Query type — filtered out, yielding no user types
 	_, err := schema.ParseSDL(`type Query { id: ID }`)
