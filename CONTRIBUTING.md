@@ -82,6 +82,10 @@ pre-commit run --all-files
 license-eye header fix
 ```
 
+## Security
+
+To report a vulnerability, see [SECURITY.md](SECURITY.md).
+
 ## License headers
 
 Every hand-written `.go` file must carry both copyright and SPDX headers:
