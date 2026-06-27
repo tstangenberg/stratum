@@ -53,6 +53,52 @@ The story-promote workflow pushes directly to `main` using a fine-grained person
 3. Add the token as a repository secret named `BOT_TOKEN`:
    `gh secret set BOT_TOKEN --repo tstangenberg/stratum`
 
+## Labels
+
+### Type — what kind of issue is it
+
+| Label | Use when |
+|---|---|
+| `bug` | Something is broken or behaves incorrectly |
+| `enhancement` | New feature or improvement to existing behavior |
+| `documentation` | Docs-only — no code change |
+| `question` | An open question needs answering before work can proceed |
+| `security` | A vulnerability or security concern — users should be able to filter for these |
+| `performance` | Nothing is broken, but it's too slow |
+| `refactor` | Internal cleanup with no user-visible change; no spec to follow |
+| `ci` | GitHub Actions or pipeline issue unrelated to dependencies |
+
+### Status — where is this issue stuck
+
+| Label | Use when |
+|---|---|
+| `needs reproduction` | A bug was reported but you cannot confirm it yet — ask for a repro case |
+| `needs discussion` | The solution is unclear; a design decision is required before anyone codes |
+| `blocked` | The issue cannot progress — waiting on another issue, a decision, or an external dependency |
+
+### Scope — what area does it touch
+
+| Label | Use when |
+|---|---|
+| `plugin` | The issue is specific to the plugin system |
+| `breaking change` | Merging the fix or feature will break existing user behavior |
+| `dependencies` | Applied automatically by Dependabot — do not add or remove manually |
+
+### Contributor signals — help people find work
+
+| Label | Use when |
+|---|---|
+| `good first issue` | The issue is small, well-scoped, and low-risk — ideal for a first contribution |
+| `help wanted` | The maintainer won't pick this up soon; outside contributions are actively welcome |
+
+### Resolution — how was the issue closed
+
+| Label | Use when |
+|---|---|
+| `wontfix` | The issue is acknowledged but deliberately not addressed |
+| `duplicate` | The same issue was reported elsewhere — link to the original before closing |
+| `invalid` | The issue is not valid — wrong repo, spam, or cannot be reproduced after follow-up |
+
 ## Pre-commit hooks
 
 This project uses pre-commit to run checks locally before committing. The hooks check for:
