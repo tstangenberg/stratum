@@ -1,0 +1,29 @@
+name: Branch name
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  check:
+    name: branch-name
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Validate branch naming convention
+        env:
+          BRANCH: ${{ github.head_ref }}
+        run: |
+          # Branches not starting with "story/" are always fine.
+          if [[ "$BRANCH" != story/* ]]; then
+            echo "Branch '$BRANCH' is not a story branch — no convention to enforce."
+            exit 0
+          fi
+
+          # Story branches must match: story/US-NNNN-<slug>
+          pattern='^story/US-[0-9]{4}-.+$'
+          if [[ "$BRANCH" =~ $pattern ]]; then
+            echo "Branch '$BRANCH' follows the naming convention."
+          else
+            echo "::warning::Branch '$BRANCH' starts with 'story/' but does not match the expected pattern 'story/US-NNNN-<slug>' (e.g. story/US-0021-coverage-report)."
+          fi
