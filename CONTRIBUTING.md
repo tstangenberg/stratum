@@ -97,6 +97,7 @@ The story-promote workflow pushes directly to `main` using a fine-grained person
 |---|---|
 | `wontfix` | The issue is acknowledged but deliberately not addressed |
 | `duplicate` | The same issue was reported elsewhere — link to the original before closing |
+| `invalid` | The issue is not valid — wrong repo, spam, or cannot be reproduced after follow-up |
 
 ## Pre-commit hooks
 
