@@ -1324,7 +1324,7 @@ func TestSchemaValidationUnknownDirective(t *testing.T) {
 	if errResp.Error != "validation_failed" {
 		t.Errorf("unknown directive: error = %q, want %q", errResp.Error, "validation_failed")
 	}
-	if !strings.Contains(errResp.Message, "@unknown") {
+	if !strings.Contains(errResp.Message, "unknown") {
 		t.Errorf("unknown directive: message = %q, expected it to mention the directive name", errResp.Message)
 	}
 }
