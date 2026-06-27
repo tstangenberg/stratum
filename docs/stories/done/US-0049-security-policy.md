@@ -1,7 +1,7 @@
 ---
 id: US-0049
 tags: [community, launch]
-status: ready
+status: done
 depends_on: [US-0044]
 ---
 
@@ -17,12 +17,12 @@ GitHub automatically surfaces SECURITY.md as a "Security policy" on the reposito
 
 ## Acceptance Criteria
 
-- [ ] `SECURITY.md` exists at the repo root
-- [ ] States the current support posture: only the latest release / main branch receives security fixes
-- [ ] Provides a private reporting method (GitHub private vulnerability reporting or email to `thorben@stangenberg.net`)
-- [ ] States the expected response time: acknowledgement within 48 hours, fix timeline communicated within 7 days
-- [ ] GitHub private vulnerability reporting is enabled on the repository
-- [ ] `CONTRIBUTING.md` placeholder "See SECURITY.md" is updated to a working link to `SECURITY.md`
+- [x] `SECURITY.md` exists at the repo root
+- [x] States the current support posture: only the latest release / main branch receives security fixes
+- [x] Provides a private reporting method (GitHub private vulnerability reporting or email to `thorben@stangenberg.net`)
+- [x] States the expected response time: acknowledgement within 48 hours, fix timeline communicated within 7 days
+- [x] GitHub private vulnerability reporting is enabled on the repository
+- [x] `CONTRIBUTING.md` placeholder "See SECURITY.md" is updated to a working link to `SECURITY.md`
 
 ## E2E Tests
 
