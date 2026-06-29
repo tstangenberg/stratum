@@ -31,9 +31,29 @@ import (
 	eqfilter "github.com/tstangenberg/stratum/internal/plugin/filter/eq"
 	simplepagination "github.com/tstangenberg/stratum/internal/plugin/pagination/simple"
 	idscalar "github.com/tstangenberg/stratum/internal/plugin/scalar/id"
+	"github.com/tstangenberg/stratum/internal/ui"
 )
 
-var h = Handler(NewStratumServer())
+func TestHandler_UIHandlerBuilderError(t *testing.T) {
+	srv := NewStratumServer()
+	srv.uiHandlerBuilder = func(_ ui.StatusProvider) (*ui.Handler, error) {
+		return nil, errors.New("injected ui builder failure")
+	}
+	_, err := Handler(srv)
+	if err == nil {
+		t.Fatal("expected error when uiHandlerBuilder fails")
+	}
+}
+
+func mustHandler(srv *StratumServer) http.Handler {
+	h, err := Handler(srv)
+	if err != nil {
+		panic(err)
+	}
+	return h
+}
+
+var h = mustHandler(NewStratumServer())
 
 func assert501(t *testing.T, method, path string) {
 	t.Helper()
@@ -125,7 +145,7 @@ func doReadiness(t *testing.T, plugins ...plugin.HealthPlugin) *http.Response {
 	for _, p := range plugins {
 		plugin.RegisterHealthPlugin(func() plugin.HealthPlugin { return p })
 	}
-	srv := Handler(NewStratumServer())
+	srv := mustHandler(NewStratumServer())
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/health/ready", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
@@ -235,7 +255,7 @@ func TestWithDB_EnablesUpsert(t *testing.T) {
 		strings.NewReader(`{"sdl":"type Location { id: ID! }"}`))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
-	Handler(srv).ServeHTTP(w, req)
+	mustHandler(srv).ServeHTTP(w, req)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 for invalid name with DB set, got %d — body: %s", w.Code, w.Body.String())
 	}
@@ -248,7 +268,7 @@ func TestUpsertSchema_InvalidName(t *testing.T) {
 		strings.NewReader(`{"sdl":"type Location { id: ID! }"}`))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
-	Handler(srv).ServeHTTP(w, req)
+	mustHandler(srv).ServeHTTP(w, req)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", w.Code)
 	}
@@ -261,7 +281,7 @@ func TestUpsertSchema_InvalidSDL(t *testing.T) {
 		strings.NewReader(`{"sdl":"type { broken"}`))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
-	Handler(srv).ServeHTTP(w, req)
+	mustHandler(srv).ServeHTTP(w, req)
 	if w.Code != http.StatusUnprocessableEntity {
 		t.Fatalf("expected 422, got %d", w.Code)
 	}
@@ -274,7 +294,7 @@ func TestUpsertSchema_InvalidSDL_DetailsPopulated(t *testing.T) {
 		strings.NewReader(`{"sdl":"type { broken"}`))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
-	Handler(srv).ServeHTTP(w, req)
+	mustHandler(srv).ServeHTTP(w, req)
 	if w.Code != http.StatusUnprocessableEntity {
 		t.Fatalf("expected 422, got %d", w.Code)
 	}
@@ -316,7 +336,7 @@ func TestUpsertSchema_EmptySDL_NoDetailsField(t *testing.T) {
 		strings.NewReader(`{"sdl":""}`))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
-	Handler(srv).ServeHTTP(w, req)
+	mustHandler(srv).ServeHTTP(w, req)
 	if w.Code != http.StatusUnprocessableEntity {
 		t.Fatalf("expected 422, got %d", w.Code)
 	}
@@ -336,7 +356,7 @@ func TestServeGraphQL_NotFound(t *testing.T) {
 		strings.NewReader(`{"query":"{ location { list { id } } }"}`))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
-	Handler(srv).ServeHTTP(w, req)
+	mustHandler(srv).ServeHTTP(w, req)
 	if w.Code != http.StatusNotFound {
 		t.Fatalf("expected 404, got %d", w.Code)
 	}
@@ -355,7 +375,7 @@ func TestReadiness_Timeout(t *testing.T) {
 	restore := plugin.ResetHealthRegistryForTesting()
 	t.Cleanup(restore)
 	plugin.RegisterHealthPlugin(func() plugin.HealthPlugin { return slowHealthPlugin{} })
-	srv := Handler(NewStratumServer())
+	srv := mustHandler(NewStratumServer())
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/health/ready", nil)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, req)
@@ -494,7 +514,7 @@ func TestBuildChain_AppliesInGivenOrder(t *testing.T) {
 
 func TestMiddleware_Rejects(t *testing.T) {
 	srv := NewStratumServer().WithMiddlewares(stubHTTPMiddleware{name: "stub", priority: 100, allowed: false})
-	handler := Handler(srv)
+	handler := mustHandler(srv)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/schemas", nil)
 	w := httptest.NewRecorder()
@@ -507,7 +527,7 @@ func TestMiddleware_Rejects(t *testing.T) {
 
 func TestMiddleware_Allows(t *testing.T) {
 	srv := NewStratumServer().WithMiddlewares(stubHTTPMiddleware{name: "stub", priority: 100, allowed: true})
-	handler := Handler(srv)
+	handler := mustHandler(srv)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/schemas", nil)
 	w := httptest.NewRecorder()
@@ -521,7 +541,7 @@ func TestMiddleware_Allows(t *testing.T) {
 
 func TestMiddleware_HealthExempt(t *testing.T) {
 	srv := NewStratumServer().WithMiddlewares(stubHTTPMiddleware{name: "stub", priority: 100, allowed: false})
-	handler := Handler(srv)
+	handler := mustHandler(srv)
 
 	t.Run("/api/v1/health/live", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/api/v1/health/live", nil)
@@ -544,7 +564,7 @@ func TestMiddleware_HealthExempt(t *testing.T) {
 
 func TestNoMiddlewareSkipsAuth(t *testing.T) {
 	srv := NewStratumServer()
-	handler := Handler(srv)
+	handler := mustHandler(srv)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/health/live", nil)
 	w := httptest.NewRecorder()
@@ -553,4 +573,158 @@ func TestNoMiddlewareSkipsAuth(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200 with no middleware, got %d", w.Code)
 	}
+}
+
+func TestHealthStatus_NoPlugins(t *testing.T) {
+	restore := plugin.ResetHealthRegistryForTesting()
+	t.Cleanup(restore)
+	srv := NewStratumServer()
+	result := srv.HealthStatus(context.Background())
+
+	if result.Liveness != "ok" {
+		t.Errorf("Liveness = %q, want %q", result.Liveness, "ok")
+	}
+	if result.Readiness != "ok" {
+		t.Errorf("Readiness = %q, want %q", result.Readiness, "ok")
+	}
+}
+
+func TestHealthStatus_WithPlugins(t *testing.T) {
+	restore := plugin.ResetHealthRegistryForTesting()
+	t.Cleanup(restore)
+	plugin.RegisterHealthPlugin(func() plugin.HealthPlugin {
+		return stubHealthPlugin{"database", plugin.StatusOK, nil}
+	})
+	plugin.RegisterHealthPlugin(func() plugin.HealthPlugin {
+		return stubHealthPlugin{"cache", plugin.StatusError, nil}
+	})
+	srv := NewStratumServer()
+	result := srv.HealthStatus(context.Background())
+
+	if result.Liveness != "ok" {
+		t.Errorf("Liveness = %q, want %q", result.Liveness, "ok")
+	}
+	if result.Readiness != "degraded" {
+		t.Errorf("Readiness = %q, want %q", result.Readiness, "degraded")
+	}
+	if result.Components["database"] != "ok" {
+		t.Errorf("database component = %q, want %q", result.Components["database"], "ok")
+	}
+	if result.Components["cache"] != "error" {
+		t.Errorf("cache component = %q, want %q", result.Components["cache"], "error")
+	}
+}
+
+func TestPlugins(t *testing.T) {
+	restore := plugin.ResetHealthRegistryForTesting()
+	t.Cleanup(restore)
+	plugin.RegisterHealthPlugin(func() plugin.HealthPlugin {
+		return stubHealthPlugin{"database", plugin.StatusOK, nil}
+	})
+	srv := NewStratumServer().
+		WithMiddlewares(stubHTTPMiddleware{name: "api-key-auth", priority: 100, allowed: true})
+	plugins := srv.Plugins()
+
+	found := make(map[string]string)
+	for _, p := range plugins {
+		found[p.Name] = p.Type
+	}
+
+	if found["database"] != "health" {
+		t.Errorf("expected database health plugin, got %v", found)
+	}
+	if found["api-key-auth"] != "middleware" {
+		t.Errorf("expected api-key-auth middleware, got %v", found)
+	}
+	if found["pagination"] != "query-modifier" {
+		t.Errorf("expected pagination query-modifier, got %v", found)
+	}
+	// Default server has 5 eq-filter plugins
+	filterCount := 0
+	for _, p := range plugins {
+		if p.Type == "filter" {
+			filterCount++
+		}
+	}
+	if filterCount != 5 {
+		t.Errorf("expected 5 filter plugins, got %d", filterCount)
+	}
+}
+
+func TestUIMiddlewareExempt(t *testing.T) {
+	srv := NewStratumServer().WithMiddlewares(stubHTTPMiddleware{name: "blocker", priority: 100, allowed: false})
+	handler := mustHandler(srv)
+
+	req := httptest.NewRequest(http.MethodGet, "/ui/status", nil)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("UI should bypass middleware, got %d", w.Code)
+	}
+}
+
+func TestUIRedirect(t *testing.T) {
+	srv := NewStratumServer()
+	handler := mustHandler(srv)
+
+	req := httptest.NewRequest(http.MethodGet, "/ui", nil)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusMovedPermanently {
+		t.Fatalf("expected 301, got %d", w.Code)
+	}
+	if loc := w.Header().Get("Location"); loc != "/ui/status" {
+		t.Fatalf("expected Location=/ui/status, got %q", loc)
+	}
+}
+
+func TestUIStatusContent(t *testing.T) {
+	restore := plugin.ResetHealthRegistryForTesting()
+	t.Cleanup(restore)
+	plugin.RegisterHealthPlugin(func() plugin.HealthPlugin {
+		return stubHealthPlugin{"database", plugin.StatusOK, nil}
+	})
+
+	handler := mustHandler(NewStratumServer())
+
+	t.Run("status page returns HTML with health and plugins", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/ui/status", nil)
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d", w.Code)
+		}
+		if ct := w.Header().Get("Content-Type"); !strings.Contains(ct, "text/html") {
+			t.Fatalf("expected text/html Content-Type, got %q", ct)
+		}
+		body := w.Body.String()
+		for _, want := range []string{"/ui/status", "/ui/schema", "/ui/console", "api-key", "localStorage", "liveness", "readiness", "database", "health"} {
+			if !strings.Contains(body, want) {
+				t.Errorf("status page missing %q", want)
+			}
+		}
+	})
+
+	t.Run("static assets are served", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/ui/static/htmx.min.js", nil)
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("expected 200 for htmx.min.js, got %d", w.Code)
+		}
+	})
+
+	t.Run("unknown path returns 404", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/ui/nonexistent", nil)
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, req)
+
+		if w.Code != http.StatusNotFound {
+			t.Fatalf("expected 404, got %d", w.Code)
+		}
+	})
 }

@@ -23,6 +23,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -38,19 +39,21 @@ import (
 	intscalar "github.com/tstangenberg/stratum/internal/plugin/scalar/int"
 	stringscalar "github.com/tstangenberg/stratum/internal/plugin/scalar/string"
 	"github.com/tstangenberg/stratum/internal/schema"
+	"github.com/tstangenberg/stratum/internal/ui"
 )
 
 var errNotImplemented = errors.New("not implemented")
 
 // StratumServer is the main server struct.
 type StratumServer struct {
-	healthPlugins  []plugin.HealthPlugin
-	middlewares    []plugin.HTTPMiddleware
-	db             *pgxpool.Pool
-	schemas        *schema.Store
-	scalars        map[string]scalar.Plugin
-	queryModifiers []plugin.QueryModifier
-	filterPlugins  []plugin.FilterPlugin
+	healthPlugins    []plugin.HealthPlugin
+	middlewares      []plugin.HTTPMiddleware
+	db               *pgxpool.Pool
+	schemas          *schema.Store
+	scalars          map[string]scalar.Plugin
+	queryModifiers   []plugin.QueryModifier
+	filterPlugins    []plugin.FilterPlugin
+	uiHandlerBuilder func(ui.StatusProvider) (*ui.Handler, error)
 }
 
 // NewStratumServer creates a new StratumServer. Health plugins are wired
@@ -75,6 +78,7 @@ func NewStratumServer() *StratumServer {
 			eqfilter.New("Float", scalars["Float"].GraphQLType()),
 			eqfilter.New("Boolean", scalars["Boolean"].GraphQLType()),
 		},
+		uiHandlerBuilder: ui.NewHandler,
 	}
 }
 
@@ -278,6 +282,74 @@ func validSchemaName(name string) bool {
 	return true
 }
 
+// HealthStatus returns the current liveness and readiness status for the UI.
+func (s *StratumServer) HealthStatus(ctx context.Context) ui.HealthResult {
+	result := ui.HealthResult{
+		Liveness:   "ok",
+		Readiness:  "ok",
+		Components: make(map[string]string),
+	}
+
+	if len(s.healthPlugins) == 0 {
+		return result
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	type checkResult struct {
+		name   string
+		status string
+	}
+
+	ch := make(chan checkResult, len(s.healthPlugins))
+	var wg sync.WaitGroup
+	for _, p := range s.healthPlugins {
+		wg.Add(1)
+		p := p
+		go func() {
+			defer wg.Done()
+			st := p.Check(ctx)
+			status := "ok"
+			if st.Status != plugin.StatusOK {
+				status = "error"
+			}
+			ch <- checkResult{name: p.Name(), status: status}
+		}()
+	}
+	wg.Wait()
+	close(ch)
+
+	for r := range ch {
+		result.Components[r.name] = r.status
+		if r.status != "ok" {
+			result.Readiness = "degraded"
+		}
+	}
+
+	return result
+}
+
+// Plugins returns information about all registered plugins.
+func (s *StratumServer) Plugins() []ui.PluginInfo {
+	var plugins []ui.PluginInfo
+
+	for _, p := range s.healthPlugins {
+		plugins = append(plugins, ui.PluginInfo{Name: p.Name(), Type: "health"})
+	}
+	for _, m := range s.middlewares {
+		plugins = append(plugins, ui.PluginInfo{Name: m.Name(), Type: "middleware"})
+	}
+	for _, qm := range s.queryModifiers {
+		plugins = append(plugins, ui.PluginInfo{Name: qm.Name(), Type: "query-modifier"})
+	}
+	for _, fp := range s.filterPlugins {
+		plugins = append(plugins, ui.PluginInfo{Name: fp.Name(), Type: "filter"})
+	}
+
+	return plugins
+}
+
 // serveGraphQL handles POST /graphql/{name} requests.
 func (s *StratumServer) serveGraphQL(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
@@ -306,7 +378,7 @@ func notImplementedHandler(w http.ResponseWriter, _ *http.Request, err error) {
 // Handler returns an http.Handler for all Stratum routes.
 // Health endpoints bypass all middleware. Remaining requests pass through
 // registered middlewares in ascending priority order before reaching the mux.
-func Handler(srv *StratumServer) http.Handler {
+func Handler(srv *StratumServer) (http.Handler, error) {
 	strict := api.NewStrictHandlerWithOptions(srv, nil, api.StrictHTTPServerOptions{
 		RequestErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, err error) {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -316,7 +388,15 @@ func Handler(srv *StratumServer) http.Handler {
 	mux := http.NewServeMux()
 	mux.Handle("/api/", api.Handler(strict))
 	mux.HandleFunc("POST /graphql/{name}", srv.serveGraphQL)
-	return buildChain(srv.middlewares, mux)
+	uiHandler, err := srv.uiHandlerBuilder(srv)
+	if err != nil {
+		return nil, err
+	}
+	mux.Handle("/ui/", http.StripPrefix("/ui", uiHandler))
+	mux.HandleFunc("GET /ui", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/ui/status", http.StatusMovedPermanently)
+	})
+	return buildChain(srv.middlewares, mux), nil
 }
 
 func buildChain(middlewares []plugin.HTTPMiddleware, mux http.Handler) http.Handler {
@@ -325,7 +405,7 @@ func buildChain(middlewares []plugin.HTTPMiddleware, mux http.Handler) http.Hand
 		h = middlewares[i].Wrap(h)
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if isHealthEndpoint(r.URL.Path) {
+		if isHealthEndpoint(r.URL.Path) || isUIEndpoint(r.URL.Path) {
 			mux.ServeHTTP(w, r)
 			return
 		}
@@ -335,6 +415,10 @@ func buildChain(middlewares []plugin.HTTPMiddleware, mux http.Handler) http.Hand
 
 func isHealthEndpoint(path string) bool {
 	return path == "/api/v1/health/live" || path == "/api/v1/health/ready"
+}
+
+func isUIEndpoint(path string) bool {
+	return path == "/ui" || strings.HasPrefix(path, "/ui/")
 }
 
 func intPtr(v int) *int       { return &v }

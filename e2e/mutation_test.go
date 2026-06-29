@@ -65,7 +65,7 @@ func TestCreateOrtschaft(t *testing.T) {
 	}
 	t.Cleanup(pool.Close)
 
-	handler := server.Handler(server.NewStratumServer().WithDB(pool))
+	handler := mustServerHandler(t, server.NewStratumServer().WithDB(pool))
 
 	// ── 1. Upload schema with Kanton and Ortschaft ──────────────────────────
 	sdl := `
@@ -274,7 +274,7 @@ func TestCreatePLZ(t *testing.T) {
 	}
 	t.Cleanup(pool.Close)
 
-	handler := server.Handler(server.NewStratumServer().WithDB(pool))
+	handler := mustServerHandler(t, server.NewStratumServer().WithDB(pool))
 
 	// ── 1. Upload schema with Kanton, Ortschaft, PLZ ────────────────────────
 	sdl := `

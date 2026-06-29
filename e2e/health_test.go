@@ -42,7 +42,7 @@ func (s stubHealthPlugin) Check(_ context.Context) plugin.HealthStatus {
 
 func TestLivenessOK(t *testing.T) {
 	srv := server.NewStratumServer()
-	handler := server.Handler(srv)
+	handler := mustServerHandler(t, srv)
 
 	// Warm up request to reduce first-call overhead
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/health/live", nil)
@@ -86,7 +86,7 @@ func TestReadinessOK(t *testing.T) {
 		return stubHealthPlugin{"cache", plugin.StatusOK}
 	})
 	srv := server.NewStratumServer()
-	handler := server.Handler(srv)
+	handler := mustServerHandler(t, srv)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/health/ready", nil)
 	w := httptest.NewRecorder()
@@ -124,7 +124,7 @@ func TestReadinessDegraded(t *testing.T) {
 		return stubHealthPlugin{"cache", plugin.StatusError}
 	})
 	srv := server.NewStratumServer()
-	handler := server.Handler(srv)
+	handler := mustServerHandler(t, srv)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/health/ready", nil)
 	w := httptest.NewRecorder()
