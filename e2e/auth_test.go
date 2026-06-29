@@ -66,7 +66,7 @@ func startAuthTestServer(t *testing.T) http.Handler {
 	}
 	t.Cleanup(pool.Close)
 
-	return server.Handler(server.NewStratumServer().WithDB(pool).WithMiddlewares(apikey.New(testAPIKey)))
+	return mustServerHandler(t, server.NewStratumServer().WithDB(pool).WithMiddlewares(apikey.New(testAPIKey)))
 }
 
 func TestAuthMissingKey(t *testing.T) {

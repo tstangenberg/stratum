@@ -19,6 +19,7 @@ package ui
 
 import (
 	"context"
+	"errors"
 	"html/template"
 	"net/http"
 	"net/http/httptest"
@@ -51,7 +52,10 @@ func TestHandler_RedirectRoot(t *testing.T) {
 		liveness:  "ok",
 		readiness: "ok",
 	}
-	h := NewHandler(provider)
+	h, err := NewHandler(provider)
+	if err != nil {
+		t.Fatalf("NewHandler: %v", err)
+	}
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	w := httptest.NewRecorder()
@@ -77,7 +81,10 @@ func TestHandler_StatusPage(t *testing.T) {
 			{Name: "pagination-simple", Type: "query-modifier"},
 		},
 	}
-	h := NewHandler(provider)
+	h, err := NewHandler(provider)
+	if err != nil {
+		t.Fatalf("NewHandler: %v", err)
+	}
 
 	req := httptest.NewRequest(http.MethodGet, "/status", nil)
 	w := httptest.NewRecorder()
@@ -121,7 +128,10 @@ func TestHandler_NotFound(t *testing.T) {
 		liveness:  "ok",
 		readiness: "ok",
 	}
-	h := NewHandler(provider)
+	h, err := NewHandler(provider)
+	if err != nil {
+		t.Fatalf("NewHandler: %v", err)
+	}
 
 	req := httptest.NewRequest(http.MethodGet, "/nonexistent", nil)
 	w := httptest.NewRecorder()
@@ -132,47 +142,40 @@ func TestHandler_NotFound(t *testing.T) {
 	}
 }
 
-func TestNewHandler_PanicsOnBrokenTemplates(t *testing.T) {
+func TestNewHandlerFromFS_ReturnsErrorOnBrokenTemplates(t *testing.T) {
 	provider := &stubStatusProvider{liveness: "ok", readiness: "ok"}
 
-	// Verify NewHandler works with valid embedded templates
-	h := NewHandler(provider)
+	h, err := NewHandler(provider)
+	if err != nil {
+		t.Fatalf("NewHandler: unexpected error: %v", err)
+	}
 	if h == nil {
 		t.Fatal("expected non-nil handler")
 	}
 
-	// Verify panic on broken template FS
 	brokenFS := fstest.MapFS{
 		"templates/layout.html": &fstest.MapFile{Data: []byte("{{.Invalid")},
 		"templates/status.html": &fstest.MapFile{Data: []byte("")},
 	}
-	defer func() {
-		if r := recover(); r == nil {
-			t.Fatal("expected panic for broken template FS")
-		}
-	}()
-	newHandlerFromFS(provider, brokenFS)
+	_, err = newHandlerFromFS(provider, brokenFS)
+	if err == nil {
+		t.Fatal("expected error for broken template FS")
+	}
 }
 
 func TestHandler_StatusTemplateError(t *testing.T) {
-	provider := &stubStatusProvider{
-		liveness:  "ok",
-		readiness: "ok",
-	}
-	// Create a template that will fail during execution
-	broken := template.Must(template.New("layout.html").Parse("{{.NonExistent.Method}}"))
+	provider := &stubStatusProvider{liveness: "ok", readiness: "ok"}
+	broken := template.Must(template.New("layout.html").Funcs(template.FuncMap{
+		"fail": func() (string, error) { return "", errors.New("forced template failure") },
+	}).Parse(`{{fail}}`))
 	h := newHandler(provider, broken)
 
 	req := httptest.NewRequest(http.MethodGet, "/status", nil)
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, req)
 
-	if w.Code != http.StatusOK {
-		// Header already written before error occurs during template execution;
-		// the error text is appended to the response body.
-		if w.Code != http.StatusInternalServerError {
-			t.Fatalf("expected 200 or 500, got %d", w.Code)
-		}
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500 when template execution fails, got %d", w.Code)
 	}
 }
 
@@ -181,7 +184,10 @@ func TestHandler_StaticAssets(t *testing.T) {
 		liveness:  "ok",
 		readiness: "ok",
 	}
-	h := NewHandler(provider)
+	h, err := NewHandler(provider)
+	if err != nil {
+		t.Fatalf("NewHandler: %v", err)
+	}
 
 	tests := []struct {
 		name     string

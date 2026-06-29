@@ -57,5 +57,9 @@ func run(addr string) error {
 		log.Printf("STRATUM_DATABASE_URL not set; schema operations disabled")
 	}
 	srv = srv.WithMiddlewares(plugin.BuildMiddlewares()...)
-	return http.ListenAndServe(addr, server.Handler(srv))
+	h, err := server.Handler(srv)
+	if err != nil {
+		return err
+	}
+	return http.ListenAndServe(addr, h)
 }

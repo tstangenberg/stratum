@@ -53,16 +53,16 @@ type Handler struct {
 }
 
 // NewHandler creates a UI handler backed by the given status provider.
-func NewHandler(provider StatusProvider) *Handler {
+func NewHandler(provider StatusProvider) (*Handler, error) {
 	return newHandlerFromFS(provider, templates)
 }
 
-func newHandlerFromFS(provider StatusProvider, tmplFS fs.FS) *Handler {
+func newHandlerFromFS(provider StatusProvider, tmplFS fs.FS) (*Handler, error) {
 	tmpl, err := template.ParseFS(tmplFS, "templates/layout.html", "templates/status.html")
 	if err != nil {
-		panic(fmt.Sprintf("ui: parse templates: %v", err))
+		return nil, fmt.Errorf("ui: parse templates: %w", err)
 	}
-	return newHandler(provider, tmpl)
+	return newHandler(provider, tmpl), nil
 }
 
 func newHandler(provider StatusProvider, tmpl *template.Template) *Handler {
@@ -124,5 +124,5 @@ func (h *Handler) handleStatic(w http.ResponseWriter, r *http.Request) {
 	case strings.HasSuffix(path, ".css"):
 		w.Header().Set("Content-Type", "text/css")
 	}
-	w.Write(data)
+	_, _ = w.Write(data)
 }

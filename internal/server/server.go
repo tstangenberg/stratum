@@ -23,6 +23,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -45,13 +46,14 @@ var errNotImplemented = errors.New("not implemented")
 
 // StratumServer is the main server struct.
 type StratumServer struct {
-	healthPlugins  []plugin.HealthPlugin
-	middlewares    []plugin.HTTPMiddleware
-	db             *pgxpool.Pool
-	schemas        *schema.Store
-	scalars        map[string]scalar.Plugin
-	queryModifiers []plugin.QueryModifier
-	filterPlugins  []plugin.FilterPlugin
+	healthPlugins    []plugin.HealthPlugin
+	middlewares      []plugin.HTTPMiddleware
+	db               *pgxpool.Pool
+	schemas          *schema.Store
+	scalars          map[string]scalar.Plugin
+	queryModifiers   []plugin.QueryModifier
+	filterPlugins    []plugin.FilterPlugin
+	uiHandlerBuilder func(ui.StatusProvider) (*ui.Handler, error)
 }
 
 // NewStratumServer creates a new StratumServer. Health plugins are wired
@@ -76,6 +78,7 @@ func NewStratumServer() *StratumServer {
 			eqfilter.New("Float", scalars["Float"].GraphQLType()),
 			eqfilter.New("Boolean", scalars["Boolean"].GraphQLType()),
 		},
+		uiHandlerBuilder: ui.NewHandler,
 	}
 }
 
@@ -375,7 +378,7 @@ func notImplementedHandler(w http.ResponseWriter, _ *http.Request, err error) {
 // Handler returns an http.Handler for all Stratum routes.
 // Health endpoints bypass all middleware. Remaining requests pass through
 // registered middlewares in ascending priority order before reaching the mux.
-func Handler(srv *StratumServer) http.Handler {
+func Handler(srv *StratumServer) (http.Handler, error) {
 	strict := api.NewStrictHandlerWithOptions(srv, nil, api.StrictHTTPServerOptions{
 		RequestErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, err error) {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -385,12 +388,15 @@ func Handler(srv *StratumServer) http.Handler {
 	mux := http.NewServeMux()
 	mux.Handle("/api/", api.Handler(strict))
 	mux.HandleFunc("POST /graphql/{name}", srv.serveGraphQL)
-	uiHandler := ui.NewHandler(srv)
+	uiHandler, err := srv.uiHandlerBuilder(srv)
+	if err != nil {
+		return nil, err
+	}
 	mux.Handle("/ui/", http.StripPrefix("/ui", uiHandler))
 	mux.HandleFunc("GET /ui", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/ui/status", http.StatusMovedPermanently)
 	})
-	return buildChain(srv.middlewares, mux)
+	return buildChain(srv.middlewares, mux), nil
 }
 
 func buildChain(middlewares []plugin.HTTPMiddleware, mux http.Handler) http.Handler {
@@ -412,7 +418,7 @@ func isHealthEndpoint(path string) bool {
 }
 
 func isUIEndpoint(path string) bool {
-	return path == "/ui" || (len(path) >= 4 && path[:4] == "/ui/")
+	return path == "/ui" || strings.HasPrefix(path, "/ui/")
 }
 
 func intPtr(v int) *int       { return &v }

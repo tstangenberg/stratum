@@ -70,7 +70,7 @@ func TestUpsertSchema_CreateTableError(t *testing.T) {
 	pool := startServerPool(t)
 	pool.Close() // closed pool forces CreateTable to fail
 	srv := NewStratumServer().WithDB(pool)
-	h := Handler(srv)
+	h := mustHandler(srv)
 
 	body, _ := json.Marshal(api.SchemaUploadRequest{Sdl: `type Location { id: ID! name: String! }`})
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/schemas/locations", bytes.NewReader(body))
@@ -86,7 +86,7 @@ func TestUpsertSchema_CreateTableError(t *testing.T) {
 func TestUpsertSchema_BuildHandlerError(t *testing.T) {
 	pool := startServerPool(t)
 	srv := NewStratumServer().WithDB(pool)
-	h := Handler(srv)
+	h := mustHandler(srv)
 
 	sdl := `type Foo { id: ID! name: String! } type FooQuery { id: ID! name: String! }`
 	body, _ := json.Marshal(api.SchemaUploadRequest{Sdl: sdl})
@@ -103,7 +103,7 @@ func TestUpsertSchema_BuildHandlerError(t *testing.T) {
 func TestUpsertSchema_Success(t *testing.T) {
 	pool := startServerPool(t)
 	srv := NewStratumServer().WithDB(pool)
-	h := Handler(srv)
+	h := mustHandler(srv)
 
 	sdl := `type Location { id: ID! name: String! }`
 	body, _ := json.Marshal(api.SchemaUploadRequest{Sdl: sdl})

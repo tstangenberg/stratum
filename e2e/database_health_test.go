@@ -58,7 +58,7 @@ func TestDatabaseHealth_OK(t *testing.T) {
 
 	t.Setenv("STRATUM_DATABASE_URL", dsn)
 
-	handler := server.Handler(server.NewStratumServer())
+	handler := mustServerHandler(t, server.NewStratumServer())
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/health/ready", nil)
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
@@ -87,7 +87,7 @@ func TestDatabaseHealth_OK(t *testing.T) {
 func TestDatabaseHealth_Unreachable(t *testing.T) {
 	t.Setenv("STRATUM_DATABASE_URL", "postgres://testuser:testpass@localhost:1/testdb?sslmode=disable")
 
-	handler := server.Handler(server.NewStratumServer())
+	handler := mustServerHandler(t, server.NewStratumServer())
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/health/ready", nil)
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)

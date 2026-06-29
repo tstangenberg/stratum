@@ -65,7 +65,7 @@ func TestListKantone(t *testing.T) {
 	}
 	t.Cleanup(pool.Close)
 
-	handler := server.Handler(server.NewStratumServer().WithDB(pool))
+	handler := mustServerHandler(t, server.NewStratumServer().WithDB(pool))
 
 	// ── 1. Upload schema ────────────────────────────────────────────────────
 	sdl := `type Kanton { id: ID! name: String! }`
@@ -207,7 +207,7 @@ func TestGetOrtschaft(t *testing.T) {
 	}
 	t.Cleanup(pool.Close)
 
-	handler := server.Handler(server.NewStratumServer().WithDB(pool))
+	handler := mustServerHandler(t, server.NewStratumServer().WithDB(pool))
 
 	// ── 1. Upload schema ────────────────────────────────────────────────────
 	sdl := `
@@ -335,7 +335,7 @@ func TestFilterPLZ(t *testing.T) {
 	}
 	t.Cleanup(pool.Close)
 
-	handler := server.Handler(server.NewStratumServer().WithDB(pool))
+	handler := mustServerHandler(t, server.NewStratumServer().WithDB(pool))
 
 	// ── 1. Upload schema with PLZ and Ortschaft ─────────────────────────────
 	sdl := `
@@ -530,7 +530,7 @@ func TestTraverseKantonOrtschaft(t *testing.T) {
 	}
 	t.Cleanup(pool.Close)
 
-	handler := server.Handler(server.NewStratumServer().WithDB(pool))
+	handler := mustServerHandler(t, server.NewStratumServer().WithDB(pool))
 
 	// ── 1. Upload schema with 1:N relation ──────────────────────────────────
 	sdl := `
@@ -713,7 +713,7 @@ func TestTraversePLZOrtschaft(t *testing.T) {
 	}
 	t.Cleanup(pool.Close)
 
-	handler := server.Handler(server.NewStratumServer().WithDB(pool))
+	handler := mustServerHandler(t, server.NewStratumServer().WithDB(pool))
 
 	// ── 1. Upload schema: PLZ → Ortschaft → Kanton (2-hop N:1 chain) ───────
 	sdl := `

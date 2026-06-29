@@ -65,7 +65,7 @@ func TestUploadSchemaString(t *testing.T) {
 	}
 	t.Cleanup(pool.Close)
 
-	handler := server.Handler(server.NewStratumServer().WithDB(pool))
+	handler := mustServerHandler(t, server.NewStratumServer().WithDB(pool))
 
 	// ── 1. Upload schema ────────────────────────────────────────────────────
 	sdl := `type Location { id: ID! name: String! }`
@@ -200,7 +200,7 @@ func TestSchemaIDScalar(t *testing.T) {
 	}
 	t.Cleanup(pool.Close)
 
-	handler := server.Handler(server.NewStratumServer().WithDB(pool))
+	handler := mustServerHandler(t, server.NewStratumServer().WithDB(pool))
 
 	// ── 1. Upload schema with ID! field ─────────────────────────────────────
 	sdl := `type Thing { id: ID! name: String! }`
@@ -407,7 +407,7 @@ func TestSchemaFloatScalar(t *testing.T) {
 	}
 	t.Cleanup(pool.Close)
 
-	handler := server.Handler(server.NewStratumServer().WithDB(pool))
+	handler := mustServerHandler(t, server.NewStratumServer().WithDB(pool))
 
 	// ── 1. Upload schema with Float! fields ─────────────────────────────────
 	sdl := `type Coordinate { id: ID! lat: Float! lon: Float! }`
@@ -588,7 +588,7 @@ func TestSchemaBooleanScalar(t *testing.T) {
 	}
 	t.Cleanup(pool.Close)
 
-	handler := server.Handler(server.NewStratumServer().WithDB(pool))
+	handler := mustServerHandler(t, server.NewStratumServer().WithDB(pool))
 
 	// ── 1. Upload schema with Boolean! field ────────────────────────────────
 	sdl := `type Record { id: ID! name: String! inAenderung: Boolean! }`
@@ -816,7 +816,7 @@ func TestSchemaIntScalar(t *testing.T) {
 	}
 	t.Cleanup(pool.Close)
 
-	handler := server.Handler(server.NewStratumServer().WithDB(pool))
+	handler := mustServerHandler(t, server.NewStratumServer().WithDB(pool))
 
 	// ── 1. Upload schema with Int! field ────────────────────────────────────
 	sdl := `type Product { id: ID! name: String! quantity: Int! }`
@@ -971,7 +971,7 @@ func TestSchemaNullableFields(t *testing.T) {
 	}
 	t.Cleanup(pool.Close)
 
-	handler := server.Handler(server.NewStratumServer().WithDB(pool))
+	handler := mustServerHandler(t, server.NewStratumServer().WithDB(pool))
 
 	// Schema: name is required (String!), description is nullable (String)
 	sdl := `type Article { id: ID! name: String! description: String }`
@@ -1188,7 +1188,7 @@ func TestSchemaValidationSyntaxError(t *testing.T) {
 	}
 	t.Cleanup(pool.Close)
 
-	handler := server.Handler(server.NewStratumServer().WithDB(pool))
+	handler := mustServerHandler(t, server.NewStratumServer().WithDB(pool))
 
 	// ── 1. Upload invalid SDL with syntax error → 422 ──────────────────────
 	sdl := `type { broken`
@@ -1294,7 +1294,7 @@ func TestSchemaValidationUnknownDirective(t *testing.T) {
 	}
 	t.Cleanup(pool.Close)
 
-	handler := server.Handler(server.NewStratumServer().WithDB(pool))
+	handler := mustServerHandler(t, server.NewStratumServer().WithDB(pool))
 
 	// ── 1. Upload SDL with unknown directive → 422 ─────────────────────────
 	sdl := `type Location @unknown { id: ID! name: String! }`
