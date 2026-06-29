@@ -51,3 +51,29 @@ func TestStore_GetMissing(t *testing.T) {
 		t.Fatal("expected not found for missing schema")
 	}
 }
+
+func TestStore_All(t *testing.T) {
+	store := schema.NewStore()
+
+	all := store.All()
+	if len(all) != 0 {
+		t.Fatalf("expected empty store, got %d entries", len(all))
+	}
+
+	now := time.Now()
+	store.Set("alpha", &schema.Schema{Name: "alpha", Version: 1, CreatedAt: now, UpdatedAt: now})
+	store.Set("beta", &schema.Schema{Name: "beta", Version: 2, CreatedAt: now, UpdatedAt: now})
+
+	all = store.All()
+	if len(all) != 2 {
+		t.Fatalf("expected 2 entries, got %d", len(all))
+	}
+
+	names := map[string]bool{}
+	for _, s := range all {
+		names[s.Name] = true
+	}
+	if !names["alpha"] || !names["beta"] {
+		t.Errorf("expected alpha and beta, got %v", names)
+	}
+}

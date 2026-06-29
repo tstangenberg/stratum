@@ -47,12 +47,22 @@ func (s *stubStatusProvider) Plugins() []PluginInfo {
 	return s.plugins
 }
 
+type stubSchemaProvider struct {
+	schemas []SchemaInfo
+}
+
+func (s *stubSchemaProvider) Schemas() []SchemaInfo {
+	return s.schemas
+}
+
+var defaultSchemaStub = &stubSchemaProvider{}
+
 func TestHandler_RedirectRoot(t *testing.T) {
 	provider := &stubStatusProvider{
 		liveness:  "ok",
 		readiness: "ok",
 	}
-	h, err := NewHandler(provider)
+	h, err := NewHandler(provider, defaultSchemaStub)
 	if err != nil {
 		t.Fatalf("NewHandler: %v", err)
 	}
@@ -81,7 +91,7 @@ func TestHandler_StatusPage(t *testing.T) {
 			{Name: "pagination-simple", Type: "query-modifier"},
 		},
 	}
-	h, err := NewHandler(provider)
+	h, err := NewHandler(provider, defaultSchemaStub)
 	if err != nil {
 		t.Fatalf("NewHandler: %v", err)
 	}
@@ -128,7 +138,7 @@ func TestHandler_NotFound(t *testing.T) {
 		liveness:  "ok",
 		readiness: "ok",
 	}
-	h, err := NewHandler(provider)
+	h, err := NewHandler(provider, defaultSchemaStub)
 	if err != nil {
 		t.Fatalf("NewHandler: %v", err)
 	}
@@ -145,7 +155,7 @@ func TestHandler_NotFound(t *testing.T) {
 func TestNewHandlerFromFS_ReturnsErrorOnBrokenTemplates(t *testing.T) {
 	provider := &stubStatusProvider{liveness: "ok", readiness: "ok"}
 
-	h, err := NewHandler(provider)
+	h, err := NewHandler(provider, defaultSchemaStub)
 	if err != nil {
 		t.Fatalf("NewHandler: unexpected error: %v", err)
 	}
@@ -156,8 +166,9 @@ func TestNewHandlerFromFS_ReturnsErrorOnBrokenTemplates(t *testing.T) {
 	brokenFS := fstest.MapFS{
 		"templates/layout.html": &fstest.MapFile{Data: []byte("{{.Invalid")},
 		"templates/status.html": &fstest.MapFile{Data: []byte("")},
+		"templates/schema.html": &fstest.MapFile{Data: []byte("")},
 	}
-	_, err = newHandlerFromFS(provider, brokenFS)
+	_, err = newHandlerFromFS(provider, defaultSchemaStub, brokenFS)
 	if err == nil {
 		t.Fatal("expected error for broken template FS")
 	}
@@ -168,9 +179,98 @@ func TestHandler_StatusTemplateError(t *testing.T) {
 	broken := template.Must(template.New("layout.html").Funcs(template.FuncMap{
 		"fail": func() (string, error) { return "", errors.New("forced template failure") },
 	}).Parse(`{{fail}}`))
-	h := newHandler(provider, broken)
+	h := newHandler(provider, defaultSchemaStub, broken)
 
 	req := httptest.NewRequest(http.MethodGet, "/status", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500 when template execution fails, got %d", w.Code)
+	}
+}
+
+func TestHandler_SchemaPage(t *testing.T) {
+	status := &stubStatusProvider{liveness: "ok", readiness: "ok"}
+
+	t.Run("empty state", func(t *testing.T) {
+		schemas := &stubSchemaProvider{}
+		h, err := NewHandler(status, schemas)
+		if err != nil {
+			t.Fatalf("NewHandler: %v", err)
+		}
+
+		req := httptest.NewRequest(http.MethodGet, "/schema", nil)
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d", w.Code)
+		}
+		ct := w.Header().Get("Content-Type")
+		if !strings.Contains(ct, "text/html") {
+			t.Fatalf("expected text/html, got %q", ct)
+		}
+		body := w.Body.String()
+		if !strings.Contains(body, "Kein Schema vorhanden") {
+			t.Error("empty hint missing")
+		}
+	})
+
+	t.Run("with schemas", func(t *testing.T) {
+		schemas := &stubSchemaProvider{schemas: []SchemaInfo{
+			{Name: "locations", SDL: "type Location { id: ID! }", Version: 1},
+			{Name: "tasks", SDL: "type Task { id: ID! }", Version: 3},
+		}}
+		h, err := NewHandler(status, schemas)
+		if err != nil {
+			t.Fatalf("NewHandler: %v", err)
+		}
+
+		req := httptest.NewRequest(http.MethodGet, "/schema", nil)
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d", w.Code)
+		}
+		body := w.Body.String()
+		for _, want := range []string{"locations", "tasks", "schema-name", "Hochladen", "Formatieren"} {
+			if !strings.Contains(body, want) {
+				t.Errorf("page missing %q", want)
+			}
+		}
+	})
+
+	t.Run("includes codemirror assets", func(t *testing.T) {
+		schemas := &stubSchemaProvider{}
+		h, err := NewHandler(status, schemas)
+		if err != nil {
+			t.Fatalf("NewHandler: %v", err)
+		}
+
+		req := httptest.NewRequest(http.MethodGet, "/schema", nil)
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, req)
+
+		body := w.Body.String()
+		for _, want := range []string{"codemirror.js", "codemirror.css", "graphql-web.js", "schema.js"} {
+			if !strings.Contains(body, want) {
+				t.Errorf("page missing asset reference %q", want)
+			}
+		}
+	})
+}
+
+func TestHandler_SchemaTemplateError(t *testing.T) {
+	status := &stubStatusProvider{liveness: "ok", readiness: "ok"}
+	schemas := &stubSchemaProvider{}
+	broken := template.Must(template.New("layout.html").Funcs(template.FuncMap{
+		"fail": func() (string, error) { return "", errors.New("forced template failure") },
+	}).Parse(`{{fail}}`))
+	h := newHandler(status, schemas, broken)
+
+	req := httptest.NewRequest(http.MethodGet, "/schema", nil)
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, req)
 
@@ -184,7 +284,7 @@ func TestHandler_StaticAssets(t *testing.T) {
 		liveness:  "ok",
 		readiness: "ok",
 	}
-	h, err := NewHandler(provider)
+	h, err := NewHandler(provider, defaultSchemaStub)
 	if err != nil {
 		t.Fatalf("NewHandler: %v", err)
 	}

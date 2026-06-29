@@ -53,7 +53,7 @@ type StratumServer struct {
 	scalars          map[string]scalar.Plugin
 	queryModifiers   []plugin.QueryModifier
 	filterPlugins    []plugin.FilterPlugin
-	uiHandlerBuilder func(ui.StatusProvider) (*ui.Handler, error)
+	uiHandlerBuilder func(ui.StatusProvider, ui.SchemaProvider) (*ui.Handler, error)
 }
 
 // NewStratumServer creates a new StratumServer. Health plugins are wired
@@ -223,6 +223,15 @@ func (s *StratumServer) UpsertSchema(ctx context.Context, req api.UpsertSchemaRe
 		return api.UpsertSchema422JSONResponse{ValidationErrorJSONResponse: resp}, nil
 	}
 
+	if req.Params.Preview != nil && *req.Params.Preview {
+		return api.UpsertSchema200JSONResponse{
+			Name:      name,
+			Status:    api.Preview,
+			Version:   1,
+			UpdatedAt: time.Now(),
+		}, nil
+	}
+
 	for _, t := range ps.Types {
 		if err := schema.CreateTable(ctx, s.db, name, t, s.scalars); err != nil {
 			return nil, fmt.Errorf("upsert schema %q: %w", name, err)
@@ -330,6 +339,20 @@ func (s *StratumServer) HealthStatus(ctx context.Context) ui.HealthResult {
 	return result
 }
 
+// Schemas returns summary information about all registered schemas.
+func (s *StratumServer) Schemas() []ui.SchemaInfo {
+	all := s.schemas.All()
+	infos := make([]ui.SchemaInfo, len(all))
+	for i, sc := range all {
+		infos[i] = ui.SchemaInfo{
+			Name:    sc.Name,
+			SDL:     sc.SDL,
+			Version: sc.Version,
+		}
+	}
+	return infos
+}
+
 // Plugins returns information about all registered plugins.
 func (s *StratumServer) Plugins() []ui.PluginInfo {
 	var plugins []ui.PluginInfo
@@ -388,7 +411,7 @@ func Handler(srv *StratumServer) (http.Handler, error) {
 	mux := http.NewServeMux()
 	mux.Handle("/api/", api.Handler(strict))
 	mux.HandleFunc("POST /graphql/{name}", srv.serveGraphQL)
-	uiHandler, err := srv.uiHandlerBuilder(srv)
+	uiHandler, err := srv.uiHandlerBuilder(srv, srv)
 	if err != nil {
 		return nil, err
 	}

@@ -31,12 +31,13 @@ import (
 	eqfilter "github.com/tstangenberg/stratum/internal/plugin/filter/eq"
 	simplepagination "github.com/tstangenberg/stratum/internal/plugin/pagination/simple"
 	idscalar "github.com/tstangenberg/stratum/internal/plugin/scalar/id"
+	"github.com/tstangenberg/stratum/internal/schema"
 	"github.com/tstangenberg/stratum/internal/ui"
 )
 
 func TestHandler_UIHandlerBuilderError(t *testing.T) {
 	srv := NewStratumServer()
-	srv.uiHandlerBuilder = func(_ ui.StatusProvider) (*ui.Handler, error) {
+	srv.uiHandlerBuilder = func(_ ui.StatusProvider, _ ui.SchemaProvider) (*ui.Handler, error) {
 		return nil, errors.New("injected ui builder failure")
 	}
 	_, err := Handler(srv)
@@ -347,6 +348,46 @@ func TestUpsertSchema_EmptySDL_NoDetailsField(t *testing.T) {
 	}
 	if _, ok := body["details"]; ok {
 		t.Errorf("expected details field to be absent for no-location error, got %s", body["details"])
+	}
+}
+
+func TestUpsertSchema_PreviewValidSDL(t *testing.T) {
+	pool := new(pgxpool.Pool)
+	srv := NewStratumServer().WithDB(pool)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/schemas/locations?preview=true",
+		strings.NewReader(`{"sdl":"type Location { id: ID! name: String! }"}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	mustHandler(srv).ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d — body: %s", w.Code, w.Body.String())
+	}
+
+	var body struct {
+		Name   string `json:"name"`
+		Status string `json:"status"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&body); err != nil {
+		t.Fatalf("response not valid JSON: %v", err)
+	}
+	if body.Status != "preview" {
+		t.Errorf("status = %q, want %q", body.Status, "preview")
+	}
+	if body.Name != "locations" {
+		t.Errorf("name = %q, want %q", body.Name, "locations")
+	}
+}
+
+func TestUpsertSchema_PreviewInvalidSDL(t *testing.T) {
+	pool := new(pgxpool.Pool)
+	srv := NewStratumServer().WithDB(pool)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/schemas/test?preview=true",
+		strings.NewReader(`{"sdl":"type Broken { id: ID! name: }"}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	mustHandler(srv).ServeHTTP(w, req)
+	if w.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("expected 422, got %d — body: %s", w.Code, w.Body.String())
 	}
 }
 
@@ -677,6 +718,51 @@ func TestUIRedirect(t *testing.T) {
 	}
 	if loc := w.Header().Get("Location"); loc != "/ui/status" {
 		t.Fatalf("expected Location=/ui/status, got %q", loc)
+	}
+}
+
+func TestSchemas(t *testing.T) {
+	srv := NewStratumServer()
+	schemas := srv.Schemas()
+	if len(schemas) != 0 {
+		t.Fatalf("expected empty schemas, got %d", len(schemas))
+	}
+
+	srv.schemas.Set("locations", &schema.Schema{
+		Name:    "locations",
+		SDL:     "type Location { id: ID! }",
+		Version: 1,
+	})
+	schemas = srv.Schemas()
+	if len(schemas) != 1 {
+		t.Fatalf("expected 1 schema, got %d", len(schemas))
+	}
+	if schemas[0].Name != "locations" {
+		t.Errorf("name = %q, want %q", schemas[0].Name, "locations")
+	}
+	if schemas[0].Version != 1 {
+		t.Errorf("version = %d, want 1", schemas[0].Version)
+	}
+}
+
+func TestUISchemaPageContent(t *testing.T) {
+	handler := mustHandler(NewStratumServer())
+
+	req := httptest.NewRequest(http.MethodGet, "/ui/schema", nil)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	if ct := w.Header().Get("Content-Type"); !strings.Contains(ct, "text/html") {
+		t.Fatalf("expected text/html Content-Type, got %q", ct)
+	}
+	body := w.Body.String()
+	for _, want := range []string{"Kein Schema vorhanden", "schema-name", "Hochladen", "Formatieren", "codemirror.js"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("schema page missing %q", want)
+		}
 	}
 }
 

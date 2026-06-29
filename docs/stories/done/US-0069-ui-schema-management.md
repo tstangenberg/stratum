@@ -1,7 +1,7 @@
 ---
 id: US-0069
 tags: [ui, schema]
-status: ready
+status: done
 ---
 
 # US-0069: UI — Schema-Verwaltung
@@ -27,19 +27,19 @@ Da CodeMirror seinen Inhalt nicht in ein natives `<textarea>` zurückschreibt, l
 
 ## Acceptance Criteria
 
-- [ ] `GET /ui/schema` zeigt die Schema-Seite
-- [ ] Die Seite listet alle vorhandenen Schemas (`GET /api/v1/schemas`) mit Name und Version — kein API-Key erforderlich
-- [ ] Ist noch kein Schema vorhanden, wird ein entsprechender Hinweis angezeigt
-- [ ] Ein Klick auf einen Schema-Eintrag füllt die Detailansicht: Name-Feld und Editor werden mit den bestehenden Werten befüllt
-- [ ] Die Detailansicht enthält ein Textfeld für den Schema-Namen (URL-sicherer Bezeichner, Pattern `^[a-z][a-z0-9_-]*$`)
-- [ ] Die Detailansicht enthält einen CodeMirror-6-Editor mit GraphQL-Syntax-Highlighting für das SDL
-- [ ] Ein "Formatieren"-Button formatiert das SDL im Editor clientseitig via `graphql.print(parse(sdl))`; bei Syntaxfehler wird eine Fehlermeldung angezeigt ohne den Inhalt zu verändern
-- [ ] Ein "Prüfen"-Button sendet das SDL an `POST /api/v1/schemas/{name}?preview=true`; Validierungsfehler werden als Lint-Marker im Editor angezeigt
-- [ ] Ein "Hochladen"-Button schickt Name und SDL per HTMX-POST an `POST /api/v1/schemas/{name}`
-- [ ] Der im Layout gespeicherte API-Key wird beim Upload und beim Prüfen als `X-API-Key`-Header mitgeschickt
-- [ ] Ist kein API-Key gesetzt, wird vor dem Upload ein Hinweis angezeigt
-- [ ] Erfolg und Fehler werden inline auf der Seite angezeigt (kein Page-Reload)
-- [ ] Nach erfolgreichem Upload aktualisiert sich die Schema-Liste automatisch
+- [x] `GET /ui/schema` zeigt die Schema-Seite
+- [x] Die Seite listet alle vorhandenen Schemas (`GET /api/v1/schemas`) mit Name und Version — kein API-Key erforderlich
+- [x] Ist noch kein Schema vorhanden, wird ein entsprechender Hinweis angezeigt
+- [x] Ein Klick auf einen Schema-Eintrag füllt die Detailansicht: Name-Feld und Editor werden mit den bestehenden Werten befüllt
+- [x] Die Detailansicht enthält ein Textfeld für den Schema-Namen (URL-sicherer Bezeichner, Pattern `^[a-z][a-z0-9_-]*$`)
+- [x] Die Detailansicht enthält einen CodeMirror-6-Editor mit GraphQL-Syntax-Highlighting für das SDL
+- [x] Ein "Formatieren"-Button formatiert das SDL im Editor clientseitig via `graphql.print(parse(sdl))`; bei Syntaxfehler wird eine Fehlermeldung angezeigt ohne den Inhalt zu verändern
+- [x] Ein "Prüfen"-Button sendet das SDL an `POST /api/v1/schemas/{name}?preview=true`; Validierungsfehler werden als Lint-Marker im Editor angezeigt
+- [x] Ein "Hochladen"-Button schickt Name und SDL per HTMX-POST an `POST /api/v1/schemas/{name}`
+- [x] Der im Layout gespeicherte API-Key wird beim Upload und beim Prüfen als `X-API-Key`-Header mitgeschickt
+- [x] Ist kein API-Key gesetzt, wird vor dem Upload ein Hinweis angezeigt
+- [x] Erfolg und Fehler werden inline auf der Seite angezeigt (kein Page-Reload)
+- [x] Nach erfolgreichem Upload aktualisiert sich die Schema-Liste automatisch
 
 ## E2E Tests
 
