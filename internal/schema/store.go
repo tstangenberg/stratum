@@ -44,3 +44,14 @@ func (s *Store) Get(name string) (*Schema, bool) {
 	sc, ok := s.schemas[name]
 	return sc, ok
 }
+
+// All returns a snapshot of every stored schema.
+func (s *Store) All() []*Schema {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]*Schema, 0, len(s.schemas))
+	for _, sc := range s.schemas {
+		out = append(out, sc)
+	}
+	return out
+}

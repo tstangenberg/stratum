@@ -6,6 +6,11 @@
     <title>Stratum</title>
     <link rel="stylesheet" href="/ui/static/style.css">
     <script src="/ui/static/htmx.min.js"></script>
+    {{if eq .Page "schema"}}
+    <link rel="stylesheet" href="/ui/static/codemirror.css">
+    <script src="/ui/static/codemirror.js"></script>
+    <script src="/ui/static/graphql-web.js"></script>
+    {{end}}
 </head>
 <body>
     <div class="layout">
@@ -22,7 +27,7 @@
             </div>
         </nav>
         <main class="content">
-            {{template "content" .}}
+            {{if eq .Page "schema"}}{{template "schema_content" .}}{{else}}{{template "status_content" .}}{{end}}
         </main>
     </div>
     <script>
@@ -35,5 +40,8 @@
             });
         })();
     </script>
+    {{if eq .Page "schema"}}
+    <script src="/ui/static/schema.js"></script>
+    {{end}}
 </body>
 </html>

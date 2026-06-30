@@ -1,0 +1,55 @@
+{{define "schema_list_items"}}
+{{if .Schemas}}
+    <table>
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Version</th>
+            </tr>
+        </thead>
+        <tbody>
+            {{range .Schemas}}
+            <tr class="schema-entry" data-name="{{.Name}}" data-sdl="{{.SDL}}">
+                <td><a href="#" onclick="loadSchema('{{.Name}}'); return false;">{{.Name}}</a></td>
+                <td>{{.Version}}</td>
+            </tr>
+            {{end}}
+        </tbody>
+    </table>
+{{else}}
+    <p class="empty-hint">Kein Schema vorhanden</p>
+{{end}}
+{{end}}
+
+{{define "schema_list_fragment"}}{{template "schema_list_items" .}}{{end}}
+
+{{define "schema_content"}}
+<h1>Schema</h1>
+
+<div class="schema-layout">
+    <section class="schema-list">
+        <h2>Schemas</h2>
+        <div id="schema-list-content">
+        {{template "schema_list_items" .}}
+        </div>
+    </section>
+
+    <section class="schema-detail">
+        <h2>Editor</h2>
+        <div class="form-group">
+            <label for="schema-name">Name</label>
+            <input type="text" id="schema-name" name="schema-name" pattern="^[a-z][a-z0-9_-]*$" placeholder="schema-name" required>
+        </div>
+        <div class="form-group">
+            <label>SDL</label>
+            <div id="editor"></div>
+        </div>
+        <div id="message-area"></div>
+        <div class="button-group">
+            <button type="button" id="btn-format" class="btn" onclick="formatSDL()">Formatieren</button>
+            <button type="button" id="btn-lint" class="btn" onclick="lintSDL()">Prüfen</button>
+            <button type="button" id="btn-upload" class="btn btn-primary" onclick="uploadSchema()">Hochladen</button>
+        </div>
+    </section>
+</div>
+{{end}}

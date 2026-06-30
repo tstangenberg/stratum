@@ -32,6 +32,18 @@ type StatusProvider interface {
 	Plugins() []PluginInfo
 }
 
+// SchemaProvider supplies data for the schema management page.
+type SchemaProvider interface {
+	Schemas() []SchemaInfo
+}
+
+// SchemaInfo describes a registered schema.
+type SchemaInfo struct {
+	Name    string
+	SDL     string
+	Version int
+}
+
 // HealthResult holds the aggregated health check results.
 type HealthResult struct {
 	Liveness   string
@@ -47,29 +59,32 @@ type PluginInfo struct {
 
 // Handler serves the embedded web UI.
 type Handler struct {
-	provider StatusProvider
-	mux      *http.ServeMux
-	tmpl     *template.Template
+	statusProvider StatusProvider
+	schemaProvider SchemaProvider
+	mux            *http.ServeMux
+	tmpl           *template.Template
 }
 
-// NewHandler creates a UI handler backed by the given status provider.
-func NewHandler(provider StatusProvider) (*Handler, error) {
-	return newHandlerFromFS(provider, templates)
+// NewHandler creates a UI handler backed by the given providers.
+func NewHandler(status StatusProvider, schemas SchemaProvider) (*Handler, error) {
+	return newHandlerFromFS(status, schemas, templates)
 }
 
-func newHandlerFromFS(provider StatusProvider, tmplFS fs.FS) (*Handler, error) {
-	tmpl, err := template.ParseFS(tmplFS, "templates/layout.html", "templates/status.html")
+func newHandlerFromFS(status StatusProvider, schemas SchemaProvider, tmplFS fs.FS) (*Handler, error) {
+	tmpl, err := template.ParseFS(tmplFS, "templates/layout.html", "templates/status.html", "templates/schema.html")
 	if err != nil {
 		return nil, fmt.Errorf("ui: parse templates: %w", err)
 	}
-	return newHandler(provider, tmpl), nil
+	return newHandler(status, schemas, tmpl), nil
 }
 
-func newHandler(provider StatusProvider, tmpl *template.Template) *Handler {
-	h := &Handler{provider: provider, tmpl: tmpl}
+func newHandler(status StatusProvider, schemas SchemaProvider, tmpl *template.Template) *Handler {
+	h := &Handler{statusProvider: status, schemaProvider: schemas, tmpl: tmpl}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /status", h.handleStatus)
+	mux.HandleFunc("GET /schema", h.handleSchema)
+	mux.HandleFunc("GET /schema/list", h.handleSchemaList)
 	mux.HandleFunc("GET /static/", h.handleStatic)
 	mux.HandleFunc("GET /{$}", h.handleRoot)
 	h.mux = mux
@@ -92,19 +107,47 @@ func (h *Handler) handleRoot(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) handleStatus(w http.ResponseWriter, r *http.Request) {
-	health := h.provider.HealthStatus(r.Context())
-	plugins := h.provider.Plugins()
+	health := h.statusProvider.HealthStatus(r.Context())
+	plugins := h.statusProvider.Plugins()
 
 	data := struct {
+		Page    string
 		Health  HealthResult
 		Plugins []PluginInfo
 	}{
+		Page:    "status",
 		Health:  health,
 		Plugins: plugins,
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := h.tmpl.ExecuteTemplate(w, "layout.html", data); err != nil {
+		http.Error(w, fmt.Sprintf("ui: render template: %v", err), http.StatusInternalServerError)
+	}
+}
+
+func (h *Handler) handleSchema(w http.ResponseWriter, r *http.Request) {
+	schemas := h.schemaProvider.Schemas()
+
+	data := struct {
+		Page    string
+		Schemas []SchemaInfo
+	}{
+		Page:    "schema",
+		Schemas: schemas,
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := h.tmpl.ExecuteTemplate(w, "layout.html", data); err != nil {
+		http.Error(w, fmt.Sprintf("ui: render template: %v", err), http.StatusInternalServerError)
+	}
+}
+
+func (h *Handler) handleSchemaList(w http.ResponseWriter, r *http.Request) {
+	schemas := h.schemaProvider.Schemas()
+	data := struct{ Schemas []SchemaInfo }{Schemas: schemas}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := h.tmpl.ExecuteTemplate(w, "schema_list_fragment", data); err != nil {
 		http.Error(w, fmt.Sprintf("ui: render template: %v", err), http.StatusInternalServerError)
 	}
 }

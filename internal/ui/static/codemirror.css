@@ -1,0 +1,10 @@
+.cm-editor {
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    min-height: 200px;
+    font-size: 14px;
+}
+.cm-editor.cm-focused {
+    outline: 2px solid #4a90d9;
+    outline-offset: -1px;
+}
