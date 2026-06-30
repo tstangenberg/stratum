@@ -1,7 +1,7 @@
 ---
 id: US-0072
 tags: [ci, dev-tooling]
-status: open
+status: ready
 depends_on: [US-0033]
 ---
 

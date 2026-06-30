@@ -1,7 +1,7 @@
 ---
 id: US-0063
 tags: [config, infrastructure, dx]
-status: draft
+status: ready
 ---
 
 # US-0063: Self-documenting configuration variables

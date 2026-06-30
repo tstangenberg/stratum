@@ -1,7 +1,7 @@
 ---
 id: US-0062
 tags: [schema, persistence, infrastructure]
-status: draft
+status: ready
 ---
 
 # US-0062: Persist schemas to PostgreSQL and load on startup

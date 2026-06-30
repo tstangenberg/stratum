@@ -1,7 +1,7 @@
 ---
 id: US-0067
 tags: [plugin, refactor]
-status: open
+status: ready
 ---
 
 # US-0067: QueryModifier self-registration

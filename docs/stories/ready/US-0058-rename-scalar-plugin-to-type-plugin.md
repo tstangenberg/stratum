@@ -1,7 +1,7 @@
 ---
 id: US-0058
 tags: [refactor, plugin, types]
-status: draft
+status: ready
 ---
 
 # US-0058: Rename ScalarPlugin to TypePlugin

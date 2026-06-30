@@ -1,7 +1,7 @@
 ---
 id: US-0066
 tags: [plugin, refactor]
-status: open
+status: ready
 ---
 
 # US-0066: ScalarPlugin self-registration
