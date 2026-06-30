@@ -55,7 +55,8 @@ func locationSchema() *schema.ParsedSchema {
 
 type stubModifier struct{ argKey string }
 
-func (s stubModifier) Name() string { return "stub" }
+func (s stubModifier) Name() string  { return "stub" }
+func (s stubModifier) Priority() int { return 0 }
 func (s stubModifier) Arguments(intType gql.Output) gql.FieldConfigArgument {
 	if s.argKey == "" {
 		return nil

@@ -26,6 +26,7 @@ import (
 	"github.com/tstangenberg/stratum/internal/plugin"
 	_ "github.com/tstangenberg/stratum/internal/plugin/auth/apikey"
 	dbplugin "github.com/tstangenberg/stratum/internal/plugin/database"
+	_ "github.com/tstangenberg/stratum/internal/plugin/pagination/simple"
 	"github.com/tstangenberg/stratum/internal/server"
 )
 

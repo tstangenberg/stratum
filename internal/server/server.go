@@ -31,7 +31,6 @@ import (
 	"github.com/tstangenberg/stratum/internal/api"
 	"github.com/tstangenberg/stratum/internal/plugin"
 	eqfilter "github.com/tstangenberg/stratum/internal/plugin/filter/eq"
-	simplepagination "github.com/tstangenberg/stratum/internal/plugin/pagination/simple"
 	"github.com/tstangenberg/stratum/internal/plugin/scalar"
 	booleanscalar "github.com/tstangenberg/stratum/internal/plugin/scalar/boolean"
 	floatscalar "github.com/tstangenberg/stratum/internal/plugin/scalar/float"
@@ -56,8 +55,8 @@ type StratumServer struct {
 	uiHandlerBuilder func(ui.StatusProvider, ui.SchemaProvider) (*ui.Handler, error)
 }
 
-// NewStratumServer creates a new StratumServer. Health plugins are wired
-// internally via plugin.BuildHealthPlugins().
+// NewStratumServer creates a new StratumServer. Health plugins and query
+// modifiers are wired via their respective self-registration registries.
 func NewStratumServer() *StratumServer {
 	scalars := map[string]scalar.Plugin{
 		"String":  stringscalar.Plugin{},
@@ -69,7 +68,7 @@ func NewStratumServer() *StratumServer {
 	return &StratumServer{
 		healthPlugins:  plugin.BuildHealthPlugins(),
 		schemas:        schema.NewStore(),
-		queryModifiers: []plugin.QueryModifier{simplepagination.New()},
+		queryModifiers: plugin.BuildQueryModifiers(),
 		scalars:        scalars,
 		filterPlugins: []plugin.FilterPlugin{
 			eqfilter.New("String", scalars["String"].GraphQLType()),
@@ -85,13 +84,6 @@ func NewStratumServer() *StratumServer {
 // WithDB sets the PostgreSQL connection pool and returns the server for chaining.
 func (s *StratumServer) WithDB(db *pgxpool.Pool) *StratumServer {
 	s.db = db
-	return s
-}
-
-// WithQueryModifiers replaces the entire query modifier pipeline and returns the server for chaining.
-// The default pipeline contains pagination-simple; callers must include it explicitly if still needed.
-func (s *StratumServer) WithQueryModifiers(modifiers ...plugin.QueryModifier) *StratumServer {
-	s.queryModifiers = modifiers
 	return s
 }
 
