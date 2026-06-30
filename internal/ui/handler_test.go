@@ -279,6 +279,64 @@ func TestHandler_SchemaTemplateError(t *testing.T) {
 	}
 }
 
+func TestHandler_SchemaListFragment(t *testing.T) {
+	status := &stubStatusProvider{liveness: "ok", readiness: "ok"}
+
+	t.Run("empty state", func(t *testing.T) {
+		h, err := NewHandler(status, &stubSchemaProvider{})
+		if err != nil {
+			t.Fatalf("NewHandler: %v", err)
+		}
+
+		req := httptest.NewRequest(http.MethodGet, "/schema/list", nil)
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d", w.Code)
+		}
+		ct := w.Header().Get("Content-Type")
+		if !strings.Contains(ct, "text/html") {
+			t.Fatalf("expected text/html, got %q", ct)
+		}
+		body := w.Body.String()
+		if !strings.Contains(body, "Kein Schema vorhanden") {
+			t.Error("empty hint missing")
+		}
+		if strings.Contains(body, "<html") {
+			t.Error("fragment must not contain full layout")
+		}
+	})
+
+	t.Run("with schemas", func(t *testing.T) {
+		schemas := &stubSchemaProvider{schemas: []SchemaInfo{
+			{Name: "locations", SDL: "type Location { id: ID! }", Version: 1},
+			{Name: "tasks", SDL: "type Task { id: ID! }", Version: 3},
+		}}
+		h, err := NewHandler(status, schemas)
+		if err != nil {
+			t.Fatalf("NewHandler: %v", err)
+		}
+
+		req := httptest.NewRequest(http.MethodGet, "/schema/list", nil)
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d", w.Code)
+		}
+		body := w.Body.String()
+		for _, want := range []string{"locations", "tasks"} {
+			if !strings.Contains(body, want) {
+				t.Errorf("fragment missing %q", want)
+			}
+		}
+		if strings.Contains(body, "<html") {
+			t.Error("fragment must not contain full layout")
+		}
+	})
+}
+
 func TestHandler_StaticAssets(t *testing.T) {
 	provider := &stubStatusProvider{
 		liveness:  "ok",

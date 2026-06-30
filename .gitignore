@@ -5,6 +5,9 @@
 # Build output
 /dist/
 
+# Codemirror bundle build tooling
+internal/ui/codemirror/node_modules/
+
 # Environment
 .env
 .env.*

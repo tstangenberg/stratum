@@ -1,3 +1,28 @@
+{{define "schema_list_items"}}
+{{if .Schemas}}
+    <table>
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Version</th>
+            </tr>
+        </thead>
+        <tbody>
+            {{range .Schemas}}
+            <tr class="schema-entry" data-name="{{.Name}}" data-sdl="{{.SDL}}">
+                <td><a href="#" onclick="loadSchema('{{.Name}}'); return false;">{{.Name}}</a></td>
+                <td>{{.Version}}</td>
+            </tr>
+            {{end}}
+        </tbody>
+    </table>
+{{else}}
+    <p class="empty-hint">Kein Schema vorhanden</p>
+{{end}}
+{{end}}
+
+{{define "schema_list_fragment"}}{{template "schema_list_items" .}}{{end}}
+
 {{define "schema_content"}}
 <h1>Schema</h1>
 
@@ -5,26 +30,7 @@
     <section class="schema-list">
         <h2>Schemas</h2>
         <div id="schema-list-content">
-        {{if .Schemas}}
-            <table>
-                <thead>
-                    <tr>
-                        <th>Name</th>
-                        <th>Version</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {{range .Schemas}}
-                    <tr class="schema-entry" data-name="{{.Name}}" data-sdl="{{.SDL}}">
-                        <td><a href="#" onclick="loadSchema('{{.Name}}'); return false;">{{.Name}}</a></td>
-                        <td>{{.Version}}</td>
-                    </tr>
-                    {{end}}
-                </tbody>
-            </table>
-        {{else}}
-            <p class="empty-hint">Kein Schema vorhanden</p>
-        {{end}}
+        {{template "schema_list_items" .}}
         </div>
     </section>
 

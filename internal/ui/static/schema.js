@@ -7,7 +7,7 @@
     var editorView = new CM.EditorView({
         state: CM.EditorState.create({
             doc: "",
-            extensions: [CM.basicSetup, CM.javascript()]
+            extensions: [CM.basicSetup, CM.graphql()]
         }),
         parent: document.getElementById("editor")
     });
@@ -138,7 +138,7 @@
         .then(function(result) {
             if (result.status === 200) {
                 showMessage("Schema '" + result.data.name + "' erfolgreich hochgeladen (Version " + result.data.version + ")", false);
-                window.location.reload();
+                htmx.ajax('GET', '/ui/schema/list', {target: '#schema-list-content', swap: 'innerHTML'});
             } else {
                 showMessage(result.data.message || "Fehler beim Upload", true);
             }
