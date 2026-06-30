@@ -337,6 +337,23 @@ func TestHandler_SchemaListFragment(t *testing.T) {
 	})
 }
 
+func TestHandler_SchemaListTemplateError(t *testing.T) {
+	status := &stubStatusProvider{liveness: "ok", readiness: "ok"}
+	schemas := &stubSchemaProvider{}
+	broken := template.Must(template.New("layout.html").Funcs(template.FuncMap{
+		"fail": func() (string, error) { return "", errors.New("forced template failure") },
+	}).Parse(`{{fail}}`))
+	h := newHandler(status, schemas, broken)
+
+	req := httptest.NewRequest(http.MethodGet, "/schema/list", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500 when template execution fails, got %d", w.Code)
+	}
+}
+
 func TestHandler_StaticAssets(t *testing.T) {
 	provider := &stubStatusProvider{
 		liveness:  "ok",
