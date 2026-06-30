@@ -2,7 +2,7 @@
   "name": "stratum-codemirror-bundle",
   "private": true,
   "scripts": {
-    "build": "esbuild entry.js --bundle --minify --outfile=../../internal/ui/static/codemirror.js --format=iife"
+    "build": "esbuild entry.js --bundle --minify --outfile=../static/codemirror.js --format=iife"
   },
   "dependencies": {
     "cm6-graphql": "^0.2.1",
