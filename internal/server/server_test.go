@@ -92,8 +92,32 @@ func TestLiveness(t *testing.T) {
 		t.Fatalf("expected status=ok, got %q", body["status"])
 	}
 }
-func TestInfo(t *testing.T)         { assert501(t, http.MethodGet, "/api/v1/info") }
-func TestListSchemas(t *testing.T)  { assert501(t, http.MethodGet, "/api/v1/schemas") }
+func TestInfo(t *testing.T) { assert501(t, http.MethodGet, "/api/v1/info") }
+func TestListSchemas(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/schemas", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	ct := w.Header().Get("Content-Type")
+	if !strings.Contains(ct, "application/json") {
+		t.Fatalf("expected application/json, got %q", ct)
+	}
+	var resp struct {
+		Schemas []struct {
+			Name    string `json:"name"`
+			Version int    `json:"version"`
+		} `json:"schemas"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(resp.Schemas) != 0 {
+		t.Fatalf("expected empty schema list, got %d", len(resp.Schemas))
+	}
+}
 func TestDeleteSchema(t *testing.T) { assert501(t, http.MethodDelete, "/api/v1/schemas/foo") }
 func TestGetSchema(t *testing.T)    { assert501(t, http.MethodGet, "/api/v1/schemas/foo") }
 func TestUpsertSchema(t *testing.T) {
@@ -574,9 +598,9 @@ func TestMiddleware_Allows(t *testing.T) {
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 
-	// 501 means the request passed middleware and reached the handler
-	if w.Code != http.StatusNotImplemented {
-		t.Fatalf("expected 501, got %d", w.Code)
+	// 200 means the request passed middleware and reached the handler
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
 	}
 }
 

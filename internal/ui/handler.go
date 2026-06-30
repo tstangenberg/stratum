@@ -71,7 +71,7 @@ func NewHandler(status StatusProvider, schemas SchemaProvider) (*Handler, error)
 }
 
 func newHandlerFromFS(status StatusProvider, schemas SchemaProvider, tmplFS fs.FS) (*Handler, error) {
-	tmpl, err := template.ParseFS(tmplFS, "templates/layout.html", "templates/status.html", "templates/schema.html")
+	tmpl, err := template.ParseFS(tmplFS, "templates/layout.html", "templates/status.html", "templates/schema.html", "templates/console.html")
 	if err != nil {
 		return nil, fmt.Errorf("ui: parse templates: %w", err)
 	}
@@ -85,6 +85,7 @@ func newHandler(status StatusProvider, schemas SchemaProvider, tmpl *template.Te
 	mux.HandleFunc("GET /status", h.handleStatus)
 	mux.HandleFunc("GET /schema", h.handleSchema)
 	mux.HandleFunc("GET /schema/list", h.handleSchemaList)
+	mux.HandleFunc("GET /console", h.handleConsole)
 	mux.HandleFunc("GET /static/", h.handleStatic)
 	mux.HandleFunc("GET /{$}", h.handleRoot)
 	h.mux = mux
@@ -148,6 +149,23 @@ func (h *Handler) handleSchemaList(w http.ResponseWriter, r *http.Request) {
 	data := struct{ Schemas []SchemaInfo }{Schemas: schemas}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := h.tmpl.ExecuteTemplate(w, "schema_list_fragment", data); err != nil {
+		http.Error(w, fmt.Sprintf("ui: render template: %v", err), http.StatusInternalServerError)
+	}
+}
+
+func (h *Handler) handleConsole(w http.ResponseWriter, r *http.Request) {
+	schemas := h.schemaProvider.Schemas()
+
+	data := struct {
+		Page    string
+		Schemas []SchemaInfo
+	}{
+		Page:    "console",
+		Schemas: schemas,
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := h.tmpl.ExecuteTemplate(w, "layout.html", data); err != nil {
 		http.Error(w, fmt.Sprintf("ui: render template: %v", err), http.StatusInternalServerError)
 	}
 }
