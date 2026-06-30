@@ -1,0 +1,15 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="go build github.com/tstangenberg/stratum/cmd/stratum" type="GoApplicationRunConfiguration" factoryName="Go Application" nameIsGenerated="true">
+    <module name="main" />
+    <working_directory value="$PROJECT_DIR$" />
+    <envs>
+      <env name="STRATUM_DATABASE_URL" value="postgres://stratum:stratum@localhost:15432/stratum" />
+      <env name="STRATUM_API_KEY" value="a" />
+    </envs>
+    <kind value="PACKAGE" />
+    <package value="github.com/tstangenberg/stratum/cmd/stratum" />
+    <directory value="$PROJECT_DIR$" />
+    <auto_managed_config_id value="$PROJECT_DIR$/cmd/stratum" />
+    <method v="2" />
+  </configuration>
+</component>
