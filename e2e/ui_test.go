@@ -283,6 +283,7 @@ func TestUIGraphQLConsole(t *testing.T) {
 	})
 
 	t.Run("graphql query execution", func(t *testing.T) {
+		uploadSchema(t, handler, "widgets", `type Widget { id: ID! name: String! }`)
 		body, _ := json.Marshal(map[string]string{
 			"query": `{ widget { list { id name } } }`,
 		})
@@ -299,7 +300,7 @@ func TestUIGraphQLConsole(t *testing.T) {
 			t.Fatalf("expected application/json, got %q", ct)
 		}
 
-		var gqlResp map[string]interface{}
+		var gqlResp map[string]any
 		if err := json.NewDecoder(w.Body).Decode(&gqlResp); err != nil {
 			t.Fatalf("decode: %v", err)
 		}
