@@ -420,6 +420,9 @@ func Handler(srv *StratumServer) (http.Handler, error) {
 	mux.HandleFunc("GET /ui", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/ui/status", http.StatusMovedPermanently)
 	})
+	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/ui", http.StatusMovedPermanently)
+	})
 	return buildChain(srv.middlewares, mux), nil
 }
 
@@ -429,7 +432,7 @@ func buildChain(middlewares []plugin.HTTPMiddleware, mux http.Handler) http.Hand
 		h = middlewares[i].Wrap(h)
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if isHealthEndpoint(r.URL.Path) || isUIEndpoint(r.URL.Path) {
+		if r.URL.Path == "/" || isHealthEndpoint(r.URL.Path) || isUIEndpoint(r.URL.Path) {
 			mux.ServeHTTP(w, r)
 			return
 		}

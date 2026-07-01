@@ -734,6 +734,21 @@ func TestUIRedirect(t *testing.T) {
 	}
 }
 
+func TestRootRedirect(t *testing.T) {
+	handler := mustHandler(NewStratumServer())
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusMovedPermanently {
+		t.Fatalf("expected 301, got %d", w.Code)
+	}
+	if loc := w.Header().Get("Location"); loc != "/ui" {
+		t.Fatalf("expected Location=/ui, got %q", loc)
+	}
+}
+
 func TestSchemas(t *testing.T) {
 	srv := NewStratumServer()
 	schemas := srv.Schemas()

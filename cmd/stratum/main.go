@@ -31,7 +31,7 @@ import (
 )
 
 func resolveAddr() string {
-	if addr := os.Getenv("STRATUM_SERVER_ADDR"); addr != "" {
+	if addr := os.Getenv(config.EnvServerAddr); addr != "" {
 		return addr
 	}
 	return ":8080"
