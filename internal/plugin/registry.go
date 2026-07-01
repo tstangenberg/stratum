@@ -41,7 +41,7 @@ func (r *Registry) Build() []HTTPMiddleware {
 			ms = append(ms, m)
 		}
 	}
-	sort.Slice(ms, func(i, j int) bool {
+	sort.SliceStable(ms, func(i, j int) bool {
 		return ms[i].Priority() < ms[j].Priority()
 	})
 	return ms
