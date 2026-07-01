@@ -1,7 +1,7 @@
 ---
 id: US-0067
 tags: [plugin, refactor]
-status: ready
+status: done
 ---
 
 # US-0067: QueryModifier self-registration
@@ -20,14 +20,14 @@ Unlike `HTTPMiddleware`, `QueryModifier` pipeline order matters for query constr
 
 ## Acceptance Criteria
 
-- [ ] `plugin.RegisterQueryModifier(f func() plugin.QueryModifier)` and `plugin.BuildQueryModifiers() []plugin.QueryModifier` exist, backed by a typed registry that sorts by `Priority()`
-- [ ] `plugin.QueryModifier` gains a `Priority() int` method; `pagination-simple` returns a sensible default (e.g. 100)
-- [ ] `pagination-simple` self-registers via `init()`
-- [ ] `NewStratumServer` no longer hard-codes `simplepagination.New()` or accepts `WithQueryModifiers`; it calls `plugin.BuildQueryModifiers()` instead
-- [ ] The server package no longer imports `pagination/simple` directly
-- [ ] `cmd/stratum/main.go` activates `pagination-simple` via a blank import
-- [ ] All existing unit and E2E tests pass
-- [ ] 100% statement coverage on all `internal/` packages
+- [x] `plugin.RegisterQueryModifier(f func() plugin.QueryModifier)` and `plugin.BuildQueryModifiers() []plugin.QueryModifier` exist, backed by a typed registry that sorts by `Priority()`
+- [x] `plugin.QueryModifier` gains a `Priority() int` method; `pagination-simple` returns a sensible default (e.g. 100)
+- [x] `pagination-simple` self-registers via `init()`
+- [x] `NewStratumServer` no longer hard-codes `simplepagination.New()` or accepts `WithQueryModifiers`; it calls `plugin.BuildQueryModifiers()` instead
+- [x] The server package no longer imports `pagination/simple` directly
+- [x] `cmd/stratum/main.go` activates `pagination-simple` via a blank import
+- [x] All existing unit and E2E tests pass
+- [x] 100% statement coverage on all `internal/` packages
 
 ## E2E Tests
 

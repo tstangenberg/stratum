@@ -21,6 +21,7 @@ import (
 	"net/http"
 	"testing"
 
+	_ "github.com/tstangenberg/stratum/internal/plugin/pagination/simple"
 	"github.com/tstangenberg/stratum/internal/server"
 )
 

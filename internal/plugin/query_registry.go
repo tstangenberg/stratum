@@ -19,42 +19,42 @@ package plugin
 
 import "sort"
 
-// Registry collects middleware factories and builds a priority-sorted pipeline.
-// Each factory is called at build time so that env vars and config are read
-// after the process has fully initialised.
-type Registry struct {
-	factories []func() HTTPMiddleware
+// QueryModifierRegistry collects query-modifier factories and builds a
+// priority-sorted pipeline. Each factory is called at build time so that env
+// vars and config are read after the process has fully initialised.
+type QueryModifierRegistry struct {
+	factories []func() QueryModifier
 }
 
 // Register adds a factory to the registry. The factory returns nil to signal
 // that the plugin is not configured and should be omitted from the pipeline.
-func (r *Registry) Register(f func() HTTPMiddleware) {
+func (r *QueryModifierRegistry) Register(f func() QueryModifier) {
 	r.factories = append(r.factories, f)
 }
 
 // Build calls every factory, discards nil results, and returns the rest sorted
-// by ascending Priority() — lower values run first (outermost in the chain).
-func (r *Registry) Build() []HTTPMiddleware {
-	var ms []HTTPMiddleware
+// by ascending Priority() — lower values run first.
+func (r *QueryModifierRegistry) Build() []QueryModifier {
+	var ms []QueryModifier
 	for _, f := range r.factories {
 		if m := f(); m != nil {
 			ms = append(ms, m)
 		}
 	}
-	sort.SliceStable(ms, func(i, j int) bool {
+	sort.Slice(ms, func(i, j int) bool {
 		return ms[i].Priority() < ms[j].Priority()
 	})
 	return ms
 }
 
-var middlewareRegistry Registry
+var queryModifierRegistry QueryModifierRegistry
 
-// RegisterMiddleware adds a factory to the middleware registry.
-func RegisterMiddleware(f func() HTTPMiddleware) {
-	middlewareRegistry.Register(f)
+// RegisterQueryModifier adds a factory to the query-modifier registry.
+func RegisterQueryModifier(f func() QueryModifier) {
+	queryModifierRegistry.Register(f)
 }
 
-// BuildMiddlewares calls the middleware registry and returns the sorted pipeline.
-func BuildMiddlewares() []HTTPMiddleware {
-	return middlewareRegistry.Build()
+// BuildQueryModifiers calls the query-modifier registry and returns the sorted pipeline.
+func BuildQueryModifiers() []QueryModifier {
+	return queryModifierRegistry.Build()
 }

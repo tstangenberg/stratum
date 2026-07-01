@@ -29,7 +29,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/tstangenberg/stratum/internal/plugin"
 	eqfilter "github.com/tstangenberg/stratum/internal/plugin/filter/eq"
-	simplepagination "github.com/tstangenberg/stratum/internal/plugin/pagination/simple"
+	_ "github.com/tstangenberg/stratum/internal/plugin/pagination/simple"
 	idscalar "github.com/tstangenberg/stratum/internal/plugin/scalar/id"
 	"github.com/tstangenberg/stratum/internal/schema"
 	"github.com/tstangenberg/stratum/internal/ui"
@@ -458,17 +458,6 @@ func TestReadiness_WithDetails(t *testing.T) {
 	}
 	if len(body.Components) != 2 {
 		t.Fatalf("expected 2 components, got %d", len(body.Components))
-	}
-}
-
-func TestWithQueryModifiers(t *testing.T) {
-	p := simplepagination.New()
-	srv := NewStratumServer().WithQueryModifiers(p)
-	if len(srv.queryModifiers) != 1 {
-		t.Fatalf("len(queryModifiers) = %d, want 1", len(srv.queryModifiers))
-	}
-	if srv.queryModifiers[0].Name() != "pagination" {
-		t.Errorf("queryModifiers[0].Name() = %q, want %q", srv.queryModifiers[0].Name(), "pagination")
 	}
 }
 

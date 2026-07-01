@@ -25,6 +25,10 @@ import "github.com/graphql-go/graphql"
 type QueryModifier interface {
 	// Name returns the plugin identifier.
 	Name() string
+	// Priority returns the sort order for the modifier pipeline.
+	// Lower values run first. Pagination should use a high value (e.g. 100)
+	// so that filters and other modifiers run before it.
+	Priority() int
 	// Arguments returns GraphQL argument configs to add to each list field.
 	// intType is the graphql-go Int type sourced from the scalar registry.
 	// Return nil if this modifier requires no client-supplied arguments.

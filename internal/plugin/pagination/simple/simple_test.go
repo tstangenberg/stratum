@@ -22,6 +22,7 @@ import (
 	"testing"
 
 	"github.com/graphql-go/graphql"
+	"github.com/tstangenberg/stratum/internal/plugin"
 	"github.com/tstangenberg/stratum/internal/plugin/pagination/simple"
 )
 
@@ -31,6 +32,27 @@ func TestName(t *testing.T) {
 	p := simple.New()
 	if p.Name() != "pagination" {
 		t.Errorf("Name() = %q, want %q", p.Name(), "pagination")
+	}
+}
+
+func TestPriority(t *testing.T) {
+	p := simple.New()
+	if p.Priority() != 100 {
+		t.Errorf("Priority() = %d, want 100", p.Priority())
+	}
+}
+
+func TestSelfRegistration(t *testing.T) {
+	modifiers := plugin.BuildQueryModifiers()
+	found := false
+	for _, m := range modifiers {
+		if m.Name() == "pagination" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("pagination plugin not found in BuildQueryModifiers()")
 	}
 }
 

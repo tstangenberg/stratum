@@ -24,7 +24,14 @@ import (
 	"strconv"
 
 	"github.com/graphql-go/graphql"
+	"github.com/tstangenberg/stratum/internal/plugin"
 )
+
+func init() {
+	plugin.RegisterQueryModifier(func() plugin.QueryModifier {
+		return New()
+	})
+}
 
 const (
 	defaultLimit = 100
@@ -61,7 +68,8 @@ func New() *Plugin {
 	return p
 }
 
-func (p *Plugin) Name() string { return "pagination" }
+func (p *Plugin) Name() string  { return "pagination" }
+func (p *Plugin) Priority() int { return 100 }
 
 // Arguments returns the limit and offset GraphQL argument configs.
 func (p *Plugin) Arguments(intType graphql.Output) graphql.FieldConfigArgument {
@@ -93,3 +101,6 @@ func (p *Plugin) ModifyQuery(query string, params []any, args map[string]any) (s
 	n := len(params)
 	return fmt.Sprintf("%s LIMIT $%d OFFSET $%d", query, n+1, n+2), append(params, limit, offset), nil
 }
+
+// Compile-time check that *Plugin satisfies plugin.QueryModifier.
+var _ plugin.QueryModifier = (*Plugin)(nil)
