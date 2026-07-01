@@ -173,14 +173,14 @@ func TestAuthInvalidKey(t *testing.T) {
 		})
 	}
 
-	// Use GET /api/v1/schemas (non-exempt, returns 501 = passed auth and hit unimplemented handler)
+	// Use GET /api/v1/schemas (non-exempt, returns 200 = passed auth and reached handler)
 	t.Run("valid key passes", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/api/v1/schemas", nil)
 		req.Header.Set("X-API-Key", testAPIKey)
 		w := httptest.NewRecorder()
 		handler.ServeHTTP(w, req)
-		if w.Code != http.StatusNotImplemented {
-			t.Fatalf("expected 501 (passed auth, hit unimplemented handler), got %d — body: %s", w.Code, w.Body.String())
+		if w.Code != http.StatusOK {
+			t.Fatalf("expected 200 (passed auth), got %d — body: %s", w.Code, w.Body.String())
 		}
 	})
 }

@@ -100,6 +100,49 @@ func TestUpsertSchema_BuildHandlerError(t *testing.T) {
 	}
 }
 
+func TestListSchemas_WithSchemas(t *testing.T) {
+	pool := startServerPool(t)
+	srv := NewStratumServer().WithDB(pool)
+	h := mustHandler(srv)
+
+	sdl := `type Location { id: ID! name: String! }`
+	body, _ := json.Marshal(api.SchemaUploadRequest{Sdl: sdl})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/schemas/locations", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("upload: expected 200, got %d — %s", w.Code, w.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/schemas", nil)
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("list: expected 200, got %d", w.Code)
+	}
+
+	var resp struct {
+		Schemas []struct {
+			Name    string `json:"name"`
+			Version int    `json:"version"`
+		} `json:"schemas"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(resp.Schemas) != 1 {
+		t.Fatalf("expected 1 schema, got %d", len(resp.Schemas))
+	}
+	if resp.Schemas[0].Name != "locations" {
+		t.Errorf("name = %q, want %q", resp.Schemas[0].Name, "locations")
+	}
+	if resp.Schemas[0].Version != 1 {
+		t.Errorf("version = %d, want 1", resp.Schemas[0].Version)
+	}
+}
+
 func TestUpsertSchema_Success(t *testing.T) {
 	pool := startServerPool(t)
 	srv := NewStratumServer().WithDB(pool)

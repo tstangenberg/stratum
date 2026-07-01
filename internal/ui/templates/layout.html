@@ -27,7 +27,7 @@
             </div>
         </nav>
         <main class="content">
-            {{if eq .Page "schema"}}{{template "schema_content" .}}{{else}}{{template "status_content" .}}{{end}}
+            {{if eq .Page "schema"}}{{template "schema_content" .}}{{else if eq .Page "console"}}{{template "console_content" .}}{{else}}{{template "status_content" .}}{{end}}
         </main>
     </div>
     <script>
@@ -42,6 +42,9 @@
     </script>
     {{if eq .Page "schema"}}
     <script src="/ui/static/schema.js"></script>
+    {{end}}
+    {{if eq .Page "console"}}
+    <script src="/ui/static/console.js"></script>
     {{end}}
 </body>
 </html>

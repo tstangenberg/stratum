@@ -163,7 +163,16 @@ func (s *StratumServer) Info(_ context.Context, _ api.InfoRequestObject) (api.In
 }
 
 func (s *StratumServer) ListSchemas(_ context.Context, _ api.ListSchemasRequestObject) (api.ListSchemasResponseObject, error) {
-	return nil, errNotImplemented
+	all := s.schemas.All()
+	summaries := make([]api.SchemaSummary, len(all))
+	for i, sc := range all {
+		summaries[i] = api.SchemaSummary{
+			Name:      sc.Name,
+			Version:   sc.Version,
+			UpdatedAt: sc.UpdatedAt,
+		}
+	}
+	return api.ListSchemas200JSONResponse{Schemas: summaries}, nil
 }
 
 func (s *StratumServer) DeleteSchema(_ context.Context, _ api.DeleteSchemaRequestObject) (api.DeleteSchemaResponseObject, error) {

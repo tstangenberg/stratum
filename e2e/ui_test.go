@@ -200,3 +200,112 @@ func TestUISchemaLint(t *testing.T) {
 		t.Error("expected message in validation detail")
 	}
 }
+
+func TestUIGraphQLConsole(t *testing.T) {
+	handler, _ := startUITestServer(t)
+
+	t.Run("console page renders", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/ui/console", nil)
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d", w.Code)
+		}
+		ct := w.Header().Get("Content-Type")
+		if !strings.Contains(ct, "text/html") {
+			t.Fatalf("expected text/html, got %q", ct)
+		}
+
+		body := w.Body.String()
+		for _, want := range []string{
+			"Console",
+			"schema-select",
+			"query-input",
+			"btn-execute",
+			"result-output",
+			"console.js",
+		} {
+			if !strings.Contains(body, want) {
+				t.Errorf("page missing %q", want)
+			}
+		}
+	})
+
+	t.Run("schema dropdown populated after upload", func(t *testing.T) {
+		uploadSchema(t, handler, "widgets", `type Widget { id: ID! name: String! }`)
+
+		req := httptest.NewRequest(http.MethodGet, "/ui/console", nil)
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d", w.Code)
+		}
+		body := w.Body.String()
+		if !strings.Contains(body, "widgets") {
+			t.Error("schema 'widgets' missing from console dropdown")
+		}
+	})
+
+	t.Run("list schemas API returns uploaded schema", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/schemas", nil)
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d — body: %s", w.Code, w.Body.String())
+		}
+		ct := w.Header().Get("Content-Type")
+		if !strings.Contains(ct, "application/json") {
+			t.Fatalf("expected application/json, got %q", ct)
+		}
+
+		var resp struct {
+			Schemas []struct {
+				Name    string `json:"name"`
+				Version int    `json:"version"`
+			} `json:"schemas"`
+		}
+		if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		found := false
+		for _, s := range resp.Schemas {
+			if s.Name == "widgets" {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Error("schema 'widgets' not in list response")
+		}
+	})
+
+	t.Run("graphql query execution", func(t *testing.T) {
+		uploadSchema(t, handler, "widgets", `type Widget { id: ID! name: String! }`)
+		body, _ := json.Marshal(map[string]string{
+			"query": `{ widget { list { id name } } }`,
+		})
+		req := httptest.NewRequest(http.MethodPost, "/graphql/widgets", bytes.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d — body: %s", w.Code, w.Body.String())
+		}
+		ct := w.Header().Get("Content-Type")
+		if !strings.Contains(ct, "application/json") {
+			t.Fatalf("expected application/json, got %q", ct)
+		}
+
+		var gqlResp map[string]any
+		if err := json.NewDecoder(w.Body).Decode(&gqlResp); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		if _, ok := gqlResp["data"]; !ok {
+			t.Error("expected 'data' key in GraphQL response")
+		}
+	})
+}

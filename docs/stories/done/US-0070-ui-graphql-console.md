@@ -1,7 +1,7 @@
 ---
 id: US-0070
 tags: [ui, graphql, console]
-status: ready
+status: done
 ---
 
 # US-0070: UI — GraphQL Console
@@ -18,13 +18,13 @@ Da der Endpunkt einen JSON-Body (`{"query": "..."}`) mit `Content-Type: applicat
 
 ## Acceptance Criteria
 
-- [ ] `GET /ui/console` zeigt die Console-Seite
-- [ ] Ein Dropdown oder Auswahlfeld zeigt alle vorhandenen Schemas (geladen von `GET /api/v1/schemas`); der Nutzer wählt das Ziel-Schema aus
-- [ ] Eine Textarea erlaubt die Eingabe eines GraphQL-Queries
-- [ ] Ein "Ausführen"-Button schickt den Query per `fetch()` als JSON-POST an `POST /graphql/{name}` mit dem gewählten Schema-Namen
-- [ ] Das JSON-Ergebnis wird formatiert (pretty-printed) unterhalb angezeigt
-- [ ] Fehler (GraphQL-Errors, HTTP-Fehler) werden inline angezeigt
-- [ ] Der im Layout gespeicherte API-Key wird als `X-API-Key`-Header mitgeschickt
+- [x] `GET /ui/console` zeigt die Console-Seite
+- [x] Ein Dropdown oder Auswahlfeld zeigt alle vorhandenen Schemas (geladen von `GET /api/v1/schemas`); der Nutzer wählt das Ziel-Schema aus
+- [x] Eine Textarea erlaubt die Eingabe eines GraphQL-Queries
+- [x] Ein "Ausführen"-Button schickt den Query per `fetch()` als JSON-POST an `POST /graphql/{name}` mit dem gewählten Schema-Namen
+- [x] Das JSON-Ergebnis wird formatiert (pretty-printed) unterhalb angezeigt
+- [x] Fehler (GraphQL-Errors, HTTP-Fehler) werden inline angezeigt
+- [x] Der im Layout gespeicherte API-Key wird als `X-API-Key`-Header mitgeschickt
 
 ## E2E Tests
 
