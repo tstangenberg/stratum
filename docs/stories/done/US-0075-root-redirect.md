@@ -1,7 +1,7 @@
 ---
 id: US-0075
 tags: [ui, dx]
-status: ready
+status: done
 ---
 
 # US-0075: Weiterleitung von `/` auf `/ui`
@@ -16,7 +16,7 @@ Aktuell liefert `GET /` eine leere Antwort oder einen 404. Da `/ui` bereits auf 
 
 ## Acceptance Criteria
 
-- [ ] `GET /` antwortet mit einem permanenten Redirect (301) auf `/ui`
+- [x] `GET /` antwortet mit einem permanenten Redirect (301) auf `/ui`
 
 ## E2E Tests
 
