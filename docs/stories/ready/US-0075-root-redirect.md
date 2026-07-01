@@ -1,7 +1,7 @@
 ---
 id: US-0075
 tags: [ui, dx]
-status: open
+status: ready
 ---
 
 # US-0075: Weiterleitung von `/` auf `/ui`
