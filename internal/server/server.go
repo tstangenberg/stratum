@@ -233,9 +233,29 @@ func (s *StratumServer) UpsertSchema(ctx context.Context, req api.UpsertSchemaRe
 		}, nil
 	}
 
-	for _, t := range ps.Types {
-		if err := schema.CreateTable(ctx, s.db, name, t, s.scalars); err != nil {
-			return nil, fmt.Errorf("upsert schema %q: %w", name, err)
+	existing, isReupload := s.schemas.Get(name)
+
+	if isReupload {
+		oldTypes := make(map[string]schema.TypeDef, len(existing.Parsed.Types))
+		for _, t := range existing.Parsed.Types {
+			oldTypes[t.Name] = t
+		}
+		for _, t := range ps.Types {
+			if old, ok := oldTypes[t.Name]; ok {
+				if err := schema.AddColumns(ctx, s.db, name, old, t, s.scalars); err != nil {
+					return nil, fmt.Errorf("upsert schema %q: %w", name, err)
+				}
+			} else {
+				if err := schema.CreateTable(ctx, s.db, name, t, s.scalars); err != nil {
+					return nil, fmt.Errorf("upsert schema %q: %w", name, err)
+				}
+			}
+		}
+	} else {
+		for _, t := range ps.Types {
+			if err := schema.CreateTable(ctx, s.db, name, t, s.scalars); err != nil {
+				return nil, fmt.Errorf("upsert schema %q: %w", name, err)
+			}
 		}
 	}
 
@@ -246,12 +266,19 @@ func (s *StratumServer) UpsertSchema(ctx context.Context, req api.UpsertSchemaRe
 
 	now := time.Now()
 	endpoint := "/graphql/" + name
+	version := 1
+	createdAt := now
+	if isReupload {
+		version = existing.Version + 1
+		createdAt = existing.CreatedAt
+	}
+
 	s.schemas.Set(name, &schema.Schema{
 		Name:      name,
 		SDL:       req.Body.Sdl,
 		Parsed:    ps,
-		Version:   1,
-		CreatedAt: now,
+		Version:   version,
+		CreatedAt: createdAt,
 		UpdatedAt: now,
 		Handler:   h,
 	})
@@ -259,7 +286,7 @@ func (s *StratumServer) UpsertSchema(ctx context.Context, req api.UpsertSchemaRe
 	return api.UpsertSchema200JSONResponse{
 		Name:            name,
 		Status:          api.Applied,
-		Version:         1,
+		Version:         version,
 		UpdatedAt:       now,
 		GraphqlEndpoint: &endpoint,
 	}, nil

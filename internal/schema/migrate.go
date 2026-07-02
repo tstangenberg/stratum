@@ -68,6 +68,39 @@ func CreateTable(ctx context.Context, db *pgxpool.Pool, schemaName string, t Typ
 	return nil
 }
 
+// AddColumns issues ALTER TABLE ADD COLUMN for fields present in newType but
+// absent in oldType. List fields and the "id" field are skipped.
+func AddColumns(ctx context.Context, db *pgxpool.Pool, schemaName string, oldType, newType TypeDef, scalars map[string]scalar.Plugin) error {
+	existing := make(map[string]bool, len(oldType.Fields))
+	for _, f := range oldType.Fields {
+		existing[f.Name] = true
+	}
+
+	tblName := tableName(schemaName, newType.Name)
+	for _, f := range newType.Fields {
+		if f.Name == "id" || f.IsList || existing[f.Name] {
+			continue
+		}
+		var colDef string
+		if f.IsRelation {
+			col := fkColumnName(f.Name)
+			refTbl := tableName(schemaName, f.Type)
+			colDef = fmt.Sprintf("%s TEXT REFERENCES %s(id)", col, refTbl)
+		} else {
+			p, ok := scalars[f.Type]
+			if !ok {
+				return fmt.Errorf("migrate: unknown scalar %q for field %q.%q", f.Type, newType.Name, f.Name)
+			}
+			colDef = fmt.Sprintf("%s %s", f.Name, p.ColumnType())
+		}
+		sql := fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s", tblName, colDef)
+		if _, err := db.Exec(ctx, sql); err != nil {
+			return fmt.Errorf("migrate: add column to %q: %w", tblName, err)
+		}
+	}
+	return nil
+}
+
 // tableName returns the PostgreSQL table name for a schema + type combination.
 func tableName(schemaName, typeName string) string {
 	return schemaName + "_" + strings.ToLower(typeName)
