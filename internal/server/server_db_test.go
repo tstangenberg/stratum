@@ -188,3 +188,168 @@ func TestUpsertSchema_Success(t *testing.T) {
 		t.Fatalf("graphql create: expected 200, got %d — %s", w.Code, w.Body.String())
 	}
 }
+
+func TestUpsertSchema_Reupload(t *testing.T) {
+	pool := startServerPool(t)
+	srv := NewStratumServer().WithDB(pool)
+	h := mustHandler(srv)
+
+	// First upload
+	sdl1 := `type Location { id: ID! name: String! }`
+	body, _ := json.Marshal(api.SchemaUploadRequest{Sdl: sdl1})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/schemas/locations", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("upload v1: expected 200, got %d — %s", w.Code, w.Body.String())
+	}
+
+	// Re-upload with added field
+	sdl2 := `type Location { id: ID! name: String! description: String }`
+	body, _ = json.Marshal(api.SchemaUploadRequest{Sdl: sdl2})
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/schemas/locations", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("upload v2: expected 200, got %d — %s", w.Code, w.Body.String())
+	}
+
+	var resp api.SchemaUploadResponse
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode v2: %v", err)
+	}
+	if resp.Version != 2 {
+		t.Errorf("version = %d, want 2", resp.Version)
+	}
+	if resp.Status != api.Applied {
+		t.Errorf("status = %q, want applied", resp.Status)
+	}
+
+	// Idempotent re-upload
+	body, _ = json.Marshal(api.SchemaUploadRequest{Sdl: sdl2})
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/schemas/locations", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("upload v3: expected 200, got %d — %s", w.Code, w.Body.String())
+	}
+
+	var resp3 api.SchemaUploadResponse
+	if err := json.NewDecoder(w.Body).Decode(&resp3); err != nil {
+		t.Fatalf("decode v3: %v", err)
+	}
+	if resp3.Version != 3 {
+		t.Errorf("version = %d, want 3", resp3.Version)
+	}
+
+	// GraphQL still works with the new field
+	gqlCreate := `{"query":"mutation { location { create(input: {name: \"Berlin\", description: \"Capital\"}) { id name description } } }"}`
+	req = httptest.NewRequest(http.MethodPost, "/graphql/locations", strings.NewReader(gqlCreate))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("graphql create: expected 200, got %d — %s", w.Code, w.Body.String())
+	}
+}
+
+func TestUpsertSchema_ReuploadAddColumnsError(t *testing.T) {
+	pool := startServerPool(t)
+	srv := NewStratumServer().WithDB(pool)
+	h := mustHandler(srv)
+
+	// First upload succeeds
+	sdl1 := `type Item { id: ID! name: String! }`
+	body, _ := json.Marshal(api.SchemaUploadRequest{Sdl: sdl1})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/schemas/items", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("upload v1: expected 200, got %d — %s", w.Code, w.Body.String())
+	}
+
+	// Close pool to force AddColumns to fail on re-upload
+	pool.Close()
+
+	sdl2 := `type Item { id: ID! name: String! price: Int }`
+	body, _ = json.Marshal(api.SchemaUploadRequest{Sdl: sdl2})
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/schemas/items", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500 when AddColumns fails, got %d — %s", w.Code, w.Body.String())
+	}
+}
+
+func TestUpsertSchema_ReuploadNewType(t *testing.T) {
+	pool := startServerPool(t)
+	srv := NewStratumServer().WithDB(pool)
+	h := mustHandler(srv)
+
+	// First upload with one type
+	sdl1 := `type Author { id: ID! name: String! }`
+	body, _ := json.Marshal(api.SchemaUploadRequest{Sdl: sdl1})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/schemas/library", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("upload v1: expected 200, got %d — %s", w.Code, w.Body.String())
+	}
+
+	// Re-upload adding a new type
+	sdl2 := `type Author { id: ID! name: String! }
+type Book { id: ID! title: String! }`
+	body, _ = json.Marshal(api.SchemaUploadRequest{Sdl: sdl2})
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/schemas/library", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("upload v2: expected 200, got %d — %s", w.Code, w.Body.String())
+	}
+
+	var resp api.SchemaUploadResponse
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode v2: %v", err)
+	}
+	if resp.Version != 2 {
+		t.Errorf("version = %d, want 2", resp.Version)
+	}
+}
+
+func TestUpsertSchema_ReuploadNewTypeError(t *testing.T) {
+	pool := startServerPool(t)
+	srv := NewStratumServer().WithDB(pool)
+	h := mustHandler(srv)
+
+	// First upload
+	sdl1 := `type Widget { id: ID! name: String! }`
+	body, _ := json.Marshal(api.SchemaUploadRequest{Sdl: sdl1})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/schemas/widgets", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("upload v1: expected 200, got %d — %s", w.Code, w.Body.String())
+	}
+
+	// Close pool then re-upload adding a new type → CreateTable fails
+	pool.Close()
+
+	sdl2 := `type Widget { id: ID! name: String! }
+type Gadget { id: ID! label: String! }`
+	body, _ = json.Marshal(api.SchemaUploadRequest{Sdl: sdl2})
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/schemas/widgets", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500 when CreateTable fails on re-upload, got %d — %s", w.Code, w.Body.String())
+	}
+}

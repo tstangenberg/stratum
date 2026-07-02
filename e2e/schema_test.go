@@ -1328,3 +1328,216 @@ func TestSchemaValidationUnknownDirective(t *testing.T) {
 		t.Errorf("unknown directive: message = %q, expected it to mention the directive name", errResp.Message)
 	}
 }
+
+func TestSchemaReuploadAddField(t *testing.T) {
+	ctx := context.Background()
+
+	pgc, err := postgres.Run(ctx, "postgres:16-alpine",
+		postgres.WithDatabase("stratum"),
+		postgres.WithUsername("stratum"),
+		postgres.WithPassword("stratum"),
+		testcontainers.WithWaitStrategy(
+			wait.ForLog("database system is ready to accept connections").
+				WithOccurrence(2).
+				WithStartupTimeout(30*time.Second),
+		),
+	)
+	if err != nil {
+		t.Fatalf("start postgres: %v", err)
+	}
+	t.Cleanup(func() { _ = pgc.Terminate(ctx) })
+
+	dsn, err := pgc.ConnectionString(ctx, "sslmode=disable")
+	if err != nil {
+		t.Fatalf("connection string: %v", err)
+	}
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		t.Fatalf("connect pool: %v", err)
+	}
+	t.Cleanup(pool.Close)
+
+	handler := mustServerHandler(t, server.NewStratumServer().WithDB(pool))
+
+	// ── 1. Upload initial schema ────────────────────────────────────────────
+	sdl1 := `type City { id: ID! name: String! }`
+	body, _ := json.Marshal(api.SchemaUploadRequest{Sdl: sdl1})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/schemas/cities",
+		bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("upload v1: expected 200, got %d — body: %s", w.Code, w.Body.String())
+	}
+
+	var resp1 api.SchemaUploadResponse
+	if err := json.NewDecoder(w.Body).Decode(&resp1); err != nil {
+		t.Fatalf("upload v1: decode: %v", err)
+	}
+	if resp1.Version != 1 {
+		t.Errorf("upload v1: version = %d, want 1", resp1.Version)
+	}
+
+	// ── 2. Create a record with the initial schema ──────────────────────────
+	gqlCreate := `{"query":"mutation { city { create(input: {name: \"Zürich\"}) { id name } } }"}`
+	req = httptest.NewRequest(http.MethodPost, "/graphql/cities",
+		strings.NewReader(gqlCreate))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("create v1: expected 200, got %d — body: %s", w.Code, w.Body.String())
+	}
+
+	var createResult struct {
+		Data struct {
+			City struct {
+				Create struct {
+					ID   string `json:"id"`
+					Name string `json:"name"`
+				} `json:"create"`
+			} `json:"city"`
+		} `json:"data"`
+		Errors []struct{ Message string } `json:"errors"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&createResult); err != nil {
+		t.Fatalf("create v1: decode: %v", err)
+	}
+	if len(createResult.Errors) > 0 {
+		t.Fatalf("create v1: errors: %v", createResult.Errors)
+	}
+	existingID := createResult.Data.City.Create.ID
+
+	// ── 3. Re-upload schema with an added field ─────────────────────────────
+	sdl2 := `type City { id: ID! name: String! population: Int }`
+	body, _ = json.Marshal(api.SchemaUploadRequest{Sdl: sdl2})
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/schemas/cities",
+		bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("upload v2: expected 200, got %d — body: %s", w.Code, w.Body.String())
+	}
+
+	var resp2 api.SchemaUploadResponse
+	if err := json.NewDecoder(w.Body).Decode(&resp2); err != nil {
+		t.Fatalf("upload v2: decode: %v", err)
+	}
+	if resp2.Version != 2 {
+		t.Errorf("upload v2: version = %d, want 2", resp2.Version)
+	}
+	if resp2.Status != api.Applied {
+		t.Errorf("upload v2: status = %q, want %q", resp2.Status, api.Applied)
+	}
+
+	// ── 4. Verify new column exists in PostgreSQL ───────────────────────────
+	var colExists bool
+	err = pool.QueryRow(ctx,
+		`SELECT EXISTS(SELECT 1 FROM information_schema.columns
+		 WHERE table_name = 'cities_city' AND column_name = 'population')`).Scan(&colExists)
+	if err != nil {
+		t.Fatalf("column check: %v", err)
+	}
+	if !colExists {
+		t.Fatal("column 'population' not found after re-upload")
+	}
+
+	// ── 5. Existing record intact, new column is NULL ───────────────────────
+	gqlGet := fmt.Sprintf(`{"query":"{ city { get(id: \"%s\") { id name population } } }"}`, existingID)
+	req = httptest.NewRequest(http.MethodPost, "/graphql/cities",
+		strings.NewReader(gqlGet))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("get existing: expected 200, got %d — body: %s", w.Code, w.Body.String())
+	}
+
+	var getResult struct {
+		Data struct {
+			City struct {
+				Get struct {
+					ID         string `json:"id"`
+					Name       string `json:"name"`
+					Population *int   `json:"population"`
+				} `json:"get"`
+			} `json:"city"`
+		} `json:"data"`
+		Errors []struct{ Message string } `json:"errors"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&getResult); err != nil {
+		t.Fatalf("get existing: decode: %v", err)
+	}
+	if len(getResult.Errors) > 0 {
+		t.Fatalf("get existing: errors: %v", getResult.Errors)
+	}
+	if getResult.Data.City.Get.Name != "Zürich" {
+		t.Errorf("get existing: name = %q, want %q", getResult.Data.City.Get.Name, "Zürich")
+	}
+	if getResult.Data.City.Get.Population != nil {
+		t.Errorf("get existing: population = %v, want nil", *getResult.Data.City.Get.Population)
+	}
+
+	// ── 6. New record can use the new field ─────────────────────────────────
+	gqlCreate2 := `{"query":"mutation { city { create(input: {name: \"Bern\", population: 134000}) { id name population } } }"}`
+	req = httptest.NewRequest(http.MethodPost, "/graphql/cities",
+		strings.NewReader(gqlCreate2))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("create v2: expected 200, got %d — body: %s", w.Code, w.Body.String())
+	}
+
+	var create2Result struct {
+		Data struct {
+			City struct {
+				Create struct {
+					ID         string `json:"id"`
+					Name       string `json:"name"`
+					Population *int   `json:"population"`
+				} `json:"create"`
+			} `json:"city"`
+		} `json:"data"`
+		Errors []struct{ Message string } `json:"errors"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&create2Result); err != nil {
+		t.Fatalf("create v2: decode: %v", err)
+	}
+	if len(create2Result.Errors) > 0 {
+		t.Fatalf("create v2: errors: %v", create2Result.Errors)
+	}
+	if create2Result.Data.City.Create.Population == nil || *create2Result.Data.City.Create.Population != 134000 {
+		t.Errorf("create v2: population = %v, want 134000", create2Result.Data.City.Create.Population)
+	}
+
+	// ── 7. Re-upload identical schema — idempotent, version increments ──────
+	body, _ = json.Marshal(api.SchemaUploadRequest{Sdl: sdl2})
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/schemas/cities",
+		bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("upload v3 (idempotent): expected 200, got %d — body: %s", w.Code, w.Body.String())
+	}
+
+	var resp3 api.SchemaUploadResponse
+	if err := json.NewDecoder(w.Body).Decode(&resp3); err != nil {
+		t.Fatalf("upload v3: decode: %v", err)
+	}
+	if resp3.Version != 3 {
+		t.Errorf("upload v3: version = %d, want 3", resp3.Version)
+	}
+	if resp3.Status != api.Applied {
+		t.Errorf("upload v3: status = %q, want %q", resp3.Status, api.Applied)
+	}
+}
