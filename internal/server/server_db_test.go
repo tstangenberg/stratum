@@ -353,3 +353,59 @@ type Gadget { id: ID! label: String! }`
 		t.Fatalf("expected 500 when CreateTable fails on re-upload, got %d — %s", w.Code, w.Body.String())
 	}
 }
+
+func TestUpsertSchema_ReuploadAfterRestart(t *testing.T) {
+	pool := startServerPool(t)
+
+	// "First server": upload v1 with one field.
+	srv1 := NewStratumServer().WithDB(pool)
+	h1 := mustHandler(srv1)
+
+	sdl1 := `type Device { id: ID! serial: String! }`
+	body, _ := json.Marshal(api.SchemaUploadRequest{Sdl: sdl1})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/schemas/devices", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	h1.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("upload v1: expected 200, got %d — %s", w.Code, w.Body.String())
+	}
+
+	// "Restart": new server with an empty in-memory store — same DB.
+	srv2 := NewStratumServer().WithDB(pool)
+	h2 := mustHandler(srv2)
+
+	// Re-upload v2 with a new field. The table already exists in the DB but
+	// the store is empty, so isReupload would have been false in the old code.
+	sdl2 := `type Device { id: ID! serial: String! firmware: String }`
+	body, _ = json.Marshal(api.SchemaUploadRequest{Sdl: sdl2})
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/schemas/devices", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	h2.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("upload v2 after restart: expected 200, got %d — %s", w.Code, w.Body.String())
+	}
+
+	// The firmware column must exist in the DB.
+	var colExists bool
+	err := pool.QueryRow(context.Background(),
+		`SELECT EXISTS(SELECT 1 FROM information_schema.columns
+		 WHERE table_name = 'devices_device' AND column_name = 'firmware')`).Scan(&colExists)
+	if err != nil {
+		t.Fatalf("column check: %v", err)
+	}
+	if !colExists {
+		t.Fatal("firmware column not found — AddColumns was not called after restart")
+	}
+
+	// GraphQL must work with the new field.
+	gqlCreate := `{"query":"mutation { device { create(input: {serial: \"SN-001\", firmware: \"2.0\"}) { id serial firmware } } }"}`
+	req = httptest.NewRequest(http.MethodPost, "/graphql/devices", strings.NewReader(gqlCreate))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	h2.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("graphql create after restart: expected 200, got %d — %s", w.Code, w.Body.String())
+	}
+}

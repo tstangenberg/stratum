@@ -37,6 +37,23 @@ func (s *Store) Set(name string, schema *Schema) {
 	s.schemas[name] = schema
 }
 
+// Upsert stores sch under name, atomically assigning its Version and CreatedAt
+// under the write lock. If a schema with the same name already exists, Version
+// is incremented from the existing value and CreatedAt is preserved; otherwise
+// Version is set to 1. This prevents concurrent re-uploads from losing a
+// version increment (TOCTOU).
+func (s *Store) Upsert(name string, sch *Schema) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if existing, ok := s.schemas[name]; ok {
+		sch.Version = existing.Version + 1
+		sch.CreatedAt = existing.CreatedAt
+	} else {
+		sch.Version = 1
+	}
+	s.schemas[name] = sch
+}
+
 // Get retrieves a schema by name. Returns (nil, false) if not found.
 func (s *Store) Get(name string) (*Schema, bool) {
 	s.mu.RLock()

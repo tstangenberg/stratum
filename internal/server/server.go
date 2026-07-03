@@ -233,29 +233,15 @@ func (s *StratumServer) UpsertSchema(ctx context.Context, req api.UpsertSchemaRe
 		}, nil
 	}
 
-	existing, isReupload := s.schemas.Get(name)
-
-	if isReupload {
-		oldTypes := make(map[string]schema.TypeDef, len(existing.Parsed.Types))
-		for _, t := range existing.Parsed.Types {
-			oldTypes[t.Name] = t
+	// CreateTable is IF NOT EXISTS, AddColumns uses IF NOT EXISTS per column.
+	// Calling both unconditionally handles first upload, re-upload, and
+	// re-upload after a server restart (empty in-memory store) identically.
+	for _, t := range ps.Types {
+		if err := schema.CreateTable(ctx, s.db, name, t, s.scalars); err != nil {
+			return nil, fmt.Errorf("upsert schema %q: %w", name, err)
 		}
-		for _, t := range ps.Types {
-			if old, ok := oldTypes[t.Name]; ok {
-				if err := schema.AddColumns(ctx, s.db, name, old, t, s.scalars); err != nil {
-					return nil, fmt.Errorf("upsert schema %q: %w", name, err)
-				}
-			} else {
-				if err := schema.CreateTable(ctx, s.db, name, t, s.scalars); err != nil {
-					return nil, fmt.Errorf("upsert schema %q: %w", name, err)
-				}
-			}
-		}
-	} else {
-		for _, t := range ps.Types {
-			if err := schema.CreateTable(ctx, s.db, name, t, s.scalars); err != nil {
-				return nil, fmt.Errorf("upsert schema %q: %w", name, err)
-			}
+		if err := schema.AddColumns(ctx, s.db, name, t, s.scalars); err != nil {
+			return nil, fmt.Errorf("upsert schema %q: %w", name, err)
 		}
 	}
 
@@ -266,27 +252,20 @@ func (s *StratumServer) UpsertSchema(ctx context.Context, req api.UpsertSchemaRe
 
 	now := time.Now()
 	endpoint := "/graphql/" + name
-	version := 1
-	createdAt := now
-	if isReupload {
-		version = existing.Version + 1
-		createdAt = existing.CreatedAt
-	}
-
-	s.schemas.Set(name, &schema.Schema{
+	newSchema := &schema.Schema{
 		Name:      name,
 		SDL:       req.Body.Sdl,
 		Parsed:    ps,
-		Version:   version,
-		CreatedAt: createdAt,
+		CreatedAt: now,
 		UpdatedAt: now,
 		Handler:   h,
-	})
+	}
+	s.schemas.Upsert(name, newSchema)
 
 	return api.UpsertSchema200JSONResponse{
 		Name:            name,
 		Status:          api.Applied,
-		Version:         version,
+		Version:         newSchema.Version,
 		UpdatedAt:       now,
 		GraphqlEndpoint: &endpoint,
 	}, nil

@@ -35,31 +35,14 @@ func CreateTable(ctx context.Context, db *pgxpool.Pool, schemaName string, t Typ
 	tblName := tableName(schemaName, t.Name)
 	cols := []string{"id TEXT PRIMARY KEY"}
 	for _, f := range t.Fields {
-		if f.Name == "id" {
+		if f.Name == "id" || f.IsList {
 			continue
 		}
-		if f.IsList {
-			continue
+		def, err := buildColDef(f, t.Name, schemaName, scalars)
+		if err != nil {
+			return err
 		}
-		if f.IsRelation {
-			col := fkColumnName(f.Name)
-			refTbl := tableName(schemaName, f.Type)
-			null := ""
-			if f.NonNull {
-				null = " NOT NULL"
-			}
-			cols = append(cols, fmt.Sprintf("%s TEXT%s REFERENCES %s(id)", col, null, refTbl))
-			continue
-		}
-		p, ok := scalars[f.Type]
-		if !ok {
-			return fmt.Errorf("migrate: unknown scalar %q for field %q.%q", f.Type, t.Name, f.Name)
-		}
-		null := ""
-		if f.NonNull {
-			null = " NOT NULL"
-		}
-		cols = append(cols, fmt.Sprintf("%s %s%s", f.Name, p.ColumnType(), null))
+		cols = append(cols, def)
 	}
 	sql := fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s (%s)", tblName, strings.Join(cols, ", "))
 	if _, err := db.Exec(ctx, sql); err != nil {
@@ -68,37 +51,51 @@ func CreateTable(ctx context.Context, db *pgxpool.Pool, schemaName string, t Typ
 	return nil
 }
 
-// AddColumns issues ALTER TABLE ADD COLUMN for fields present in newType but
-// absent in oldType. List fields and the "id" field are skipped.
-func AddColumns(ctx context.Context, db *pgxpool.Pool, schemaName string, oldType, newType TypeDef, scalars map[string]scalar.Plugin) error {
-	existing := make(map[string]bool, len(oldType.Fields))
-	for _, f := range oldType.Fields {
-		existing[f.Name] = true
-	}
-
-	tblName := tableName(schemaName, newType.Name)
-	for _, f := range newType.Fields {
-		if f.Name == "id" || f.IsList || existing[f.Name] {
+// AddColumns issues a single ALTER TABLE ADD COLUMN IF NOT EXISTS for every
+// non-id, non-list field in t. Using IF NOT EXISTS makes the call idempotent:
+// existing columns are silently skipped, so the same schema can be applied
+// repeatedly (e.g. after a server restart) without error.
+func AddColumns(ctx context.Context, db *pgxpool.Pool, schemaName string, t TypeDef, scalars map[string]scalar.Plugin) error {
+	var clauses []string
+	for _, f := range t.Fields {
+		if f.Name == "id" || f.IsList {
 			continue
 		}
-		var colDef string
-		if f.IsRelation {
-			col := fkColumnName(f.Name)
-			refTbl := tableName(schemaName, f.Type)
-			colDef = fmt.Sprintf("%s TEXT REFERENCES %s(id)", col, refTbl)
-		} else {
-			p, ok := scalars[f.Type]
-			if !ok {
-				return fmt.Errorf("migrate: unknown scalar %q for field %q.%q", f.Type, newType.Name, f.Name)
-			}
-			colDef = fmt.Sprintf("%s %s", f.Name, p.ColumnType())
+		def, err := buildColDef(f, t.Name, schemaName, scalars)
+		if err != nil {
+			return err
 		}
-		sql := fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s", tblName, colDef)
-		if _, err := db.Exec(ctx, sql); err != nil {
-			return fmt.Errorf("migrate: add column to %q: %w", tblName, err)
-		}
+		clauses = append(clauses, "ADD COLUMN IF NOT EXISTS "+def)
+	}
+	if len(clauses) == 0 {
+		return nil
+	}
+	tblName := tableName(schemaName, t.Name)
+	sql := fmt.Sprintf("ALTER TABLE %s %s", tblName, strings.Join(clauses, ", "))
+	if _, err := db.Exec(ctx, sql); err != nil {
+		return fmt.Errorf("migrate: add columns to %q: %w", tblName, err)
 	}
 	return nil
+}
+
+// buildColDef returns the SQL column definition fragment for a single field.
+// This is shared by CreateTable and AddColumns to keep their column handling
+// identical (same NOT NULL, same FK format).
+func buildColDef(f FieldDef, typeName, schemaName string, scalars map[string]scalar.Plugin) (string, error) {
+	null := ""
+	if f.NonNull {
+		null = " NOT NULL"
+	}
+	if f.IsRelation {
+		col := fkColumnName(f.Name)
+		refTbl := tableName(schemaName, f.Type)
+		return fmt.Sprintf("%s TEXT%s REFERENCES %s(id)", col, null, refTbl), nil
+	}
+	p, ok := scalars[f.Type]
+	if !ok {
+		return "", fmt.Errorf("migrate: unknown scalar %q for field %q.%q", f.Type, typeName, f.Name)
+	}
+	return fmt.Sprintf("%s %s%s", f.Name, p.ColumnType(), null), nil
 }
 
 // tableName returns the PostgreSQL table name for a schema + type combination.
