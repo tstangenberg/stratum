@@ -52,6 +52,41 @@ func TestStore_GetMissing(t *testing.T) {
 	}
 }
 
+func TestStore_Upsert_NewSchema(t *testing.T) {
+	store := schema.NewStore()
+	sch := &schema.Schema{Name: "locations", SDL: `type Location { id: ID! }`}
+	store.Upsert("locations", sch)
+
+	got, ok := store.Get("locations")
+	if !ok {
+		t.Fatal("expected to find schema after Upsert")
+	}
+	if got.Version != 1 {
+		t.Errorf("Version = %d, want 1 for new schema", got.Version)
+	}
+}
+
+func TestStore_Upsert_ExistingSchema(t *testing.T) {
+	store := schema.NewStore()
+	first := &schema.Schema{Name: "locations", SDL: `type Location { id: ID! }`}
+	store.Upsert("locations", first)
+
+	created := first.CreatedAt
+	second := &schema.Schema{Name: "locations", SDL: `type Location { id: ID! name: String! }`}
+	store.Upsert("locations", second)
+
+	got, ok := store.Get("locations")
+	if !ok {
+		t.Fatal("expected to find schema after second Upsert")
+	}
+	if got.Version != 2 {
+		t.Errorf("Version = %d, want 2 after re-upload", got.Version)
+	}
+	if !got.CreatedAt.Equal(created) {
+		t.Errorf("CreatedAt changed on re-upload: got %v, want %v", got.CreatedAt, created)
+	}
+}
+
 func TestStore_All(t *testing.T) {
 	store := schema.NewStore()
 

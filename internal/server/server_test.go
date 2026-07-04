@@ -30,6 +30,7 @@ import (
 	"github.com/tstangenberg/stratum/internal/plugin"
 	eqfilter "github.com/tstangenberg/stratum/internal/plugin/filter/eq"
 	_ "github.com/tstangenberg/stratum/internal/plugin/pagination/simple"
+	"github.com/tstangenberg/stratum/internal/plugin/scalar"
 	idscalar "github.com/tstangenberg/stratum/internal/plugin/scalar/id"
 	"github.com/tstangenberg/stratum/internal/schema"
 	"github.com/tstangenberg/stratum/internal/ui"
@@ -412,6 +413,24 @@ func TestUpsertSchema_PreviewInvalidSDL(t *testing.T) {
 	mustHandler(srv).ServeHTTP(w, req)
 	if w.Code != http.StatusUnprocessableEntity {
 		t.Fatalf("expected 422, got %d — body: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestUpsertSchema_AddColumnsError(t *testing.T) {
+	srv := NewStratumServer().WithDB(new(pgxpool.Pool))
+	srv.createTable = func(_ context.Context, _ *pgxpool.Pool, _ string, _ schema.TypeDef, _ map[string]scalar.Plugin) error {
+		return nil
+	}
+	srv.addColumns = func(_ context.Context, _ *pgxpool.Pool, _ string, _ schema.TypeDef, _ map[string]scalar.Plugin) error {
+		return errors.New("injected AddColumns failure")
+	}
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/schemas/items",
+		strings.NewReader(`{"sdl":"type Item { id: ID! name: String! }"}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	mustHandler(srv).ServeHTTP(w, req)
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500 when AddColumns fails, got %d — %s", w.Code, w.Body.String())
 	}
 }
 

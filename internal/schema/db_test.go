@@ -1275,3 +1275,261 @@ func TestCreateTable_SkipsListRelation(t *testing.T) {
 		t.Errorf("expected 2 columns, got %d", cols)
 	}
 }
+
+func TestAddColumns_Success(t *testing.T) {
+	pool := startPool(t)
+	ctx := context.Background()
+
+	base := schema.TypeDef{
+		Name: "City",
+		Fields: []schema.FieldDef{
+			{Name: "id", Type: "ID", NonNull: true},
+			{Name: "name", Type: "String", NonNull: true},
+		},
+	}
+	scalars := map[string]scalar.Plugin{
+		"String": stringscalar.Plugin{},
+		"ID":     idscalar.Plugin{},
+		"Int":    intscalar.Plugin{},
+	}
+
+	if err := schema.CreateTable(ctx, pool, "test", base, scalars); err != nil {
+		t.Fatalf("CreateTable: %v", err)
+	}
+
+	withPopulation := schema.TypeDef{
+		Name: "City",
+		Fields: []schema.FieldDef{
+			{Name: "id", Type: "ID", NonNull: true},
+			{Name: "name", Type: "String", NonNull: true},
+			{Name: "population", Type: "Int", NonNull: false},
+		},
+	}
+
+	if err := schema.AddColumns(ctx, pool, "test", withPopulation, scalars); err != nil {
+		t.Fatalf("AddColumns: %v", err)
+	}
+
+	var colExists bool
+	err := pool.QueryRow(ctx,
+		`SELECT EXISTS(SELECT 1 FROM information_schema.columns
+		 WHERE table_name = 'test_city' AND column_name = 'population')`).Scan(&colExists)
+	if err != nil {
+		t.Fatalf("column check: %v", err)
+	}
+	if !colExists {
+		t.Fatal("expected 'population' column after AddColumns")
+	}
+}
+
+func TestAddColumns_Idempotent(t *testing.T) {
+	pool := startPool(t)
+	ctx := context.Background()
+
+	td := schema.TypeDef{
+		Name: "City",
+		Fields: []schema.FieldDef{
+			{Name: "id", Type: "ID", NonNull: true},
+			{Name: "name", Type: "String", NonNull: true},
+		},
+	}
+	scalars := schemaScalars()
+
+	if err := schema.CreateTable(ctx, pool, "test", td, scalars); err != nil {
+		t.Fatalf("CreateTable: %v", err)
+	}
+
+	// Calling AddColumns twice must not error — IF NOT EXISTS skips existing columns.
+	if err := schema.AddColumns(ctx, pool, "test", td, scalars); err != nil {
+		t.Fatalf("AddColumns first call: %v", err)
+	}
+	if err := schema.AddColumns(ctx, pool, "test", td, scalars); err != nil {
+		t.Fatalf("AddColumns second call: %v", err)
+	}
+}
+
+func TestAddColumns_NonNullScalar(t *testing.T) {
+	pool := startPool(t)
+	ctx := context.Background()
+
+	base := schema.TypeDef{
+		Name: "Item",
+		Fields: []schema.FieldDef{
+			{Name: "id", Type: "ID", NonNull: true},
+		},
+	}
+	scalars := schemaScalars()
+
+	if err := schema.CreateTable(ctx, pool, "test", base, scalars); err != nil {
+		t.Fatalf("CreateTable: %v", err)
+	}
+
+	withNonNull := schema.TypeDef{
+		Name: "Item",
+		Fields: []schema.FieldDef{
+			{Name: "id", Type: "ID", NonNull: true},
+			{Name: "label", Type: "String", NonNull: true},
+		},
+	}
+
+	if err := schema.AddColumns(ctx, pool, "test", withNonNull, scalars); err != nil {
+		t.Fatalf("AddColumns: %v", err)
+	}
+
+	var isNullable string
+	err := pool.QueryRow(ctx,
+		`SELECT is_nullable FROM information_schema.columns
+		 WHERE table_name = 'test_item' AND column_name = 'label'`).Scan(&isNullable)
+	if err != nil {
+		t.Fatalf("column check: %v", err)
+	}
+	if isNullable != "NO" {
+		t.Errorf("label is_nullable = %q, want NO (NOT NULL)", isNullable)
+	}
+}
+
+func TestAddColumns_NonNullRelation(t *testing.T) {
+	pool := startPool(t)
+	ctx := context.Background()
+	scalars := schemaScalars()
+
+	refType := schema.TypeDef{
+		Name: "Region",
+		Fields: []schema.FieldDef{
+			{Name: "id", Type: "ID", NonNull: true},
+		},
+	}
+	if err := schema.CreateTable(ctx, pool, "test", refType, scalars); err != nil {
+		t.Fatalf("CreateTable Region: %v", err)
+	}
+
+	base := schema.TypeDef{
+		Name: "City",
+		Fields: []schema.FieldDef{
+			{Name: "id", Type: "ID", NonNull: true},
+		},
+	}
+	if err := schema.CreateTable(ctx, pool, "test", base, scalars); err != nil {
+		t.Fatalf("CreateTable City: %v", err)
+	}
+
+	withNonNullFK := schema.TypeDef{
+		Name: "City",
+		Fields: []schema.FieldDef{
+			{Name: "id", Type: "ID", NonNull: true},
+			{Name: "region", Type: "Region", NonNull: true, IsRelation: true},
+		},
+	}
+
+	if err := schema.AddColumns(ctx, pool, "test", withNonNullFK, scalars); err != nil {
+		t.Fatalf("AddColumns: %v", err)
+	}
+
+	var isNullable string
+	err := pool.QueryRow(ctx,
+		`SELECT is_nullable FROM information_schema.columns
+		 WHERE table_name = 'test_city' AND column_name = 'region_id'`).Scan(&isNullable)
+	if err != nil {
+		t.Fatalf("column check: %v", err)
+	}
+	if isNullable != "NO" {
+		t.Errorf("region_id is_nullable = %q, want NO (NOT NULL)", isNullable)
+	}
+}
+
+func TestAddColumns_Relation(t *testing.T) {
+	pool := startPool(t)
+	ctx := context.Background()
+
+	parentTD := schema.TypeDef{
+		Name: "Region",
+		Fields: []schema.FieldDef{
+			{Name: "id", Type: "ID", NonNull: true},
+			{Name: "name", Type: "String", NonNull: true},
+		},
+	}
+	scalars := schemaScalars()
+
+	if err := schema.CreateTable(ctx, pool, "test", parentTD, scalars); err != nil {
+		t.Fatalf("CreateTable Region: %v", err)
+	}
+
+	base := schema.TypeDef{
+		Name: "City",
+		Fields: []schema.FieldDef{
+			{Name: "id", Type: "ID", NonNull: true},
+			{Name: "name", Type: "String", NonNull: true},
+		},
+	}
+	if err := schema.CreateTable(ctx, pool, "test", base, scalars); err != nil {
+		t.Fatalf("CreateTable City: %v", err)
+	}
+
+	withRegion := schema.TypeDef{
+		Name: "City",
+		Fields: []schema.FieldDef{
+			{Name: "id", Type: "ID", NonNull: true},
+			{Name: "name", Type: "String", NonNull: true},
+			{Name: "region", Type: "Region", NonNull: false, IsRelation: true},
+		},
+	}
+
+	if err := schema.AddColumns(ctx, pool, "test", withRegion, scalars); err != nil {
+		t.Fatalf("AddColumns with relation: %v", err)
+	}
+
+	var colExists bool
+	err := pool.QueryRow(ctx,
+		`SELECT EXISTS(SELECT 1 FROM information_schema.columns
+		 WHERE table_name = 'test_city' AND column_name = 'region_id')`).Scan(&colExists)
+	if err != nil {
+		t.Fatalf("column check: %v", err)
+	}
+	if !colExists {
+		t.Fatal("expected 'region_id' column after AddColumns with relation")
+	}
+}
+
+func TestAddColumns_NoColumns(t *testing.T) {
+	td := schema.TypeDef{
+		Name:   "Item",
+		Fields: []schema.FieldDef{{Name: "id", Type: "ID", NonNull: true}},
+	}
+	if err := schema.AddColumns(context.Background(), nil, "test", td, nil); err != nil {
+		t.Fatalf("expected nil for id-only type, got %v", err)
+	}
+}
+
+func TestAddColumns_UnknownScalar(t *testing.T) {
+	td := schema.TypeDef{
+		Name: "City",
+		Fields: []schema.FieldDef{
+			{Name: "id", Type: "ID", NonNull: true},
+			{Name: "score", Type: "Unknown", NonNull: false},
+		},
+	}
+
+	err := schema.AddColumns(context.Background(), nil, "test", td, map[string]scalar.Plugin{})
+	if err == nil {
+		t.Fatal("expected error for unknown scalar")
+	}
+}
+
+func TestAddColumns_DBError(t *testing.T) {
+	pool := startPool(t)
+	pool.Close()
+
+	td := schema.TypeDef{
+		Name: "City",
+		Fields: []schema.FieldDef{
+			{Name: "id", Type: "ID", NonNull: true},
+			{Name: "name", Type: "String", NonNull: true},
+		},
+	}
+	scalars := schemaScalars()
+
+	err := schema.AddColumns(context.Background(), pool, "test", td, scalars)
+	if err == nil {
+		t.Fatal("expected error when pool is closed")
+	}
+}

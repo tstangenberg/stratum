@@ -35,37 +35,67 @@ func CreateTable(ctx context.Context, db *pgxpool.Pool, schemaName string, t Typ
 	tblName := tableName(schemaName, t.Name)
 	cols := []string{"id TEXT PRIMARY KEY"}
 	for _, f := range t.Fields {
-		if f.Name == "id" {
+		if f.Name == "id" || f.IsList {
 			continue
 		}
-		if f.IsList {
-			continue
+		def, err := buildColDef(f, t.Name, schemaName, scalars)
+		if err != nil {
+			return err
 		}
-		if f.IsRelation {
-			col := fkColumnName(f.Name)
-			refTbl := tableName(schemaName, f.Type)
-			null := ""
-			if f.NonNull {
-				null = " NOT NULL"
-			}
-			cols = append(cols, fmt.Sprintf("%s TEXT%s REFERENCES %s(id)", col, null, refTbl))
-			continue
-		}
-		p, ok := scalars[f.Type]
-		if !ok {
-			return fmt.Errorf("migrate: unknown scalar %q for field %q.%q", f.Type, t.Name, f.Name)
-		}
-		null := ""
-		if f.NonNull {
-			null = " NOT NULL"
-		}
-		cols = append(cols, fmt.Sprintf("%s %s%s", f.Name, p.ColumnType(), null))
+		cols = append(cols, def)
 	}
 	sql := fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s (%s)", tblName, strings.Join(cols, ", "))
 	if _, err := db.Exec(ctx, sql); err != nil {
 		return fmt.Errorf("migrate: create table %q: %w", tblName, err)
 	}
 	return nil
+}
+
+// AddColumns issues a single ALTER TABLE ADD COLUMN IF NOT EXISTS for every
+// non-id, non-list field in t. Using IF NOT EXISTS makes the call idempotent:
+// existing columns are silently skipped, so the same schema can be applied
+// repeatedly (e.g. after a server restart) without error.
+func AddColumns(ctx context.Context, db *pgxpool.Pool, schemaName string, t TypeDef, scalars map[string]scalar.Plugin) error {
+	var clauses []string
+	for _, f := range t.Fields {
+		if f.Name == "id" || f.IsList {
+			continue
+		}
+		def, err := buildColDef(f, t.Name, schemaName, scalars)
+		if err != nil {
+			return err
+		}
+		clauses = append(clauses, "ADD COLUMN IF NOT EXISTS "+def)
+	}
+	if len(clauses) == 0 {
+		return nil
+	}
+	tblName := tableName(schemaName, t.Name)
+	sql := fmt.Sprintf("ALTER TABLE %s %s", tblName, strings.Join(clauses, ", "))
+	if _, err := db.Exec(ctx, sql); err != nil {
+		return fmt.Errorf("migrate: add columns to %q: %w", tblName, err)
+	}
+	return nil
+}
+
+// buildColDef returns the SQL column definition fragment for a single field.
+// This is shared by CreateTable and AddColumns to keep their column handling
+// identical (same NOT NULL, same FK format).
+func buildColDef(f FieldDef, typeName, schemaName string, scalars map[string]scalar.Plugin) (string, error) {
+	null := ""
+	if f.NonNull {
+		null = " NOT NULL"
+	}
+	if f.IsRelation {
+		col := fkColumnName(f.Name)
+		refTbl := tableName(schemaName, f.Type)
+		return fmt.Sprintf("%s TEXT%s REFERENCES %s(id)", col, null, refTbl), nil
+	}
+	p, ok := scalars[f.Type]
+	if !ok {
+		return "", fmt.Errorf("migrate: unknown scalar %q for field %q.%q", f.Type, typeName, f.Name)
+	}
+	return fmt.Sprintf("%s %s%s", f.Name, p.ColumnType(), null), nil
 }
 
 // tableName returns the PostgreSQL table name for a schema + type combination.

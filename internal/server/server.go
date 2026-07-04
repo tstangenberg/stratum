@@ -53,6 +53,8 @@ type StratumServer struct {
 	queryModifiers   []plugin.QueryModifier
 	filterPlugins    []plugin.FilterPlugin
 	uiHandlerBuilder func(ui.StatusProvider, ui.SchemaProvider) (*ui.Handler, error)
+	createTable      func(ctx context.Context, db *pgxpool.Pool, schemaName string, t schema.TypeDef, scalars map[string]scalar.Plugin) error
+	addColumns       func(ctx context.Context, db *pgxpool.Pool, schemaName string, t schema.TypeDef, scalars map[string]scalar.Plugin) error
 }
 
 // NewStratumServer creates a new StratumServer. Health plugins and query
@@ -78,6 +80,8 @@ func NewStratumServer() *StratumServer {
 			eqfilter.New("Boolean", scalars["Boolean"].GraphQLType()),
 		},
 		uiHandlerBuilder: ui.NewHandler,
+		createTable:      schema.CreateTable,
+		addColumns:       schema.AddColumns,
 	}
 }
 
@@ -233,8 +237,14 @@ func (s *StratumServer) UpsertSchema(ctx context.Context, req api.UpsertSchemaRe
 		}, nil
 	}
 
+	// CreateTable is IF NOT EXISTS, AddColumns uses IF NOT EXISTS per column.
+	// Calling both unconditionally handles first upload, re-upload, and
+	// re-upload after a server restart (empty in-memory store) identically.
 	for _, t := range ps.Types {
-		if err := schema.CreateTable(ctx, s.db, name, t, s.scalars); err != nil {
+		if err := s.createTable(ctx, s.db, name, t, s.scalars); err != nil {
+			return nil, fmt.Errorf("upsert schema %q: %w", name, err)
+		}
+		if err := s.addColumns(ctx, s.db, name, t, s.scalars); err != nil {
 			return nil, fmt.Errorf("upsert schema %q: %w", name, err)
 		}
 	}
@@ -246,20 +256,20 @@ func (s *StratumServer) UpsertSchema(ctx context.Context, req api.UpsertSchemaRe
 
 	now := time.Now()
 	endpoint := "/graphql/" + name
-	s.schemas.Set(name, &schema.Schema{
+	newSchema := &schema.Schema{
 		Name:      name,
 		SDL:       req.Body.Sdl,
 		Parsed:    ps,
-		Version:   1,
 		CreatedAt: now,
 		UpdatedAt: now,
 		Handler:   h,
-	})
+	}
+	s.schemas.Upsert(name, newSchema)
 
 	return api.UpsertSchema200JSONResponse{
 		Name:            name,
 		Status:          api.Applied,
-		Version:         1,
+		Version:         newSchema.Version,
 		UpdatedAt:       now,
 		GraphqlEndpoint: &endpoint,
 	}, nil
