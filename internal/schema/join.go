@@ -164,7 +164,7 @@ func totalJoinCols(n joinNode) int {
 
 // MaxDepthFromEnv reads the max relation depth from the STRATUM_MAX_DEPTH environment variable.
 func MaxDepthFromEnv() int {
-	s := os.Getenv("STRATUM_MAX_DEPTH")
+	s := os.Getenv(EnvMaxDepth)
 	if s == "" {
 		return defaultMaxDepth
 	}
