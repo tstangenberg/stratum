@@ -39,10 +39,7 @@ const (
 )
 
 // Plugin provides simple offset-based pagination via limit and offset GraphQL arguments.
-// Configure via:
-//
-//	STRATUM_PLUGINS_PAGINATION_DEFAULT_LIMIT — default records per page (default: 100)
-//	STRATUM_PLUGINS_PAGINATION_MAX_LIMIT     — hard maximum records per page (default: 1000)
+// Configure via EnvDefaultLimit and EnvMaxLimit.
 type Plugin struct {
 	defaultLimit int
 	maxLimit     int
@@ -51,18 +48,18 @@ type Plugin struct {
 // New creates a Plugin reading its configuration from environment variables.
 func New() *Plugin {
 	p := &Plugin{defaultLimit: defaultLimit, maxLimit: defaultMax}
-	if s := os.Getenv("STRATUM_PLUGINS_PAGINATION_DEFAULT_LIMIT"); s != "" {
+	if s := os.Getenv(EnvDefaultLimit); s != "" {
 		if n, err := strconv.Atoi(s); err == nil && n > 0 {
 			p.defaultLimit = n
 		} else {
-			log.Printf("pagination-simple: STRATUM_PLUGINS_PAGINATION_DEFAULT_LIMIT=%q is invalid, using default %d", s, defaultLimit)
+			log.Printf("pagination-simple: %s=%q is invalid, using default %d", EnvDefaultLimit, s, defaultLimit)
 		}
 	}
-	if s := os.Getenv("STRATUM_PLUGINS_PAGINATION_MAX_LIMIT"); s != "" {
+	if s := os.Getenv(EnvMaxLimit); s != "" {
 		if n, err := strconv.Atoi(s); err == nil && n > 0 {
 			p.maxLimit = n
 		} else {
-			log.Printf("pagination-simple: STRATUM_PLUGINS_PAGINATION_MAX_LIMIT=%q is invalid, using default %d", s, defaultMax)
+			log.Printf("pagination-simple: %s=%q is invalid, using default %d", EnvMaxLimit, s, defaultMax)
 		}
 	}
 	return p
