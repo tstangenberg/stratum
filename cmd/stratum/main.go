@@ -55,7 +55,7 @@ func run(addr string) error {
 		defer dbplugin.ClosePool()
 		srv = srv.WithDB(pool)
 	} else {
-		log.Printf("STRATUM_DATABASE_URL not set; schema operations disabled")
+		log.Printf("%s not set; schema operations disabled", dbplugin.EnvDatabaseURL)
 	}
 	srv = srv.WithMiddlewares(plugin.BuildMiddlewares()...)
 	h, err := server.Handler(srv)
