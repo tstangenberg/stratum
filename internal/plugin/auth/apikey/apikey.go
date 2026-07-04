@@ -50,7 +50,7 @@ func New(key string) *Plugin {
 // FromEnv creates a plugin from the STRATUM_API_KEY environment variable.
 // Returns nil when the variable is not set, which leaves auth disabled.
 func FromEnv() *Plugin {
-	key := os.Getenv("STRATUM_API_KEY")
+	key := os.Getenv(EnvAPIKey)
 	if key == "" {
 		return nil
 	}
@@ -62,7 +62,7 @@ func (p *Plugin) Name() string { return "api-key-auth" }
 // Priority returns the middleware position in the chain. Override via
 // STRATUM_HTTP_MIDDLEWARE_API_KEY_AUTH_PRIORITY in stratum.yaml.
 func (p *Plugin) Priority() int {
-	if s := os.Getenv("STRATUM_HTTP_MIDDLEWARE_API_KEY_AUTH_PRIORITY"); s != "" {
+	if s := os.Getenv(EnvMiddlewarePriority); s != "" {
 		if v, err := strconv.Atoi(s); err == nil && v >= 0 {
 			return v
 		}
