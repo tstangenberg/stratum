@@ -1490,6 +1490,16 @@ func TestAddColumns_Relation(t *testing.T) {
 	}
 }
 
+func TestAddColumns_NoColumns(t *testing.T) {
+	td := schema.TypeDef{
+		Name:   "Item",
+		Fields: []schema.FieldDef{{Name: "id", Type: "ID", NonNull: true}},
+	}
+	if err := schema.AddColumns(context.Background(), nil, "test", td, nil); err != nil {
+		t.Fatalf("expected nil for id-only type, got %v", err)
+	}
+}
+
 func TestAddColumns_UnknownScalar(t *testing.T) {
 	td := schema.TypeDef{
 		Name: "City",

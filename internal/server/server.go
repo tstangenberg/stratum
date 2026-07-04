@@ -53,6 +53,8 @@ type StratumServer struct {
 	queryModifiers   []plugin.QueryModifier
 	filterPlugins    []plugin.FilterPlugin
 	uiHandlerBuilder func(ui.StatusProvider, ui.SchemaProvider) (*ui.Handler, error)
+	createTable      func(ctx context.Context, db *pgxpool.Pool, schemaName string, t schema.TypeDef, scalars map[string]scalar.Plugin) error
+	addColumns       func(ctx context.Context, db *pgxpool.Pool, schemaName string, t schema.TypeDef, scalars map[string]scalar.Plugin) error
 }
 
 // NewStratumServer creates a new StratumServer. Health plugins and query
@@ -78,6 +80,8 @@ func NewStratumServer() *StratumServer {
 			eqfilter.New("Boolean", scalars["Boolean"].GraphQLType()),
 		},
 		uiHandlerBuilder: ui.NewHandler,
+		createTable:      schema.CreateTable,
+		addColumns:       schema.AddColumns,
 	}
 }
 
@@ -237,10 +241,10 @@ func (s *StratumServer) UpsertSchema(ctx context.Context, req api.UpsertSchemaRe
 	// Calling both unconditionally handles first upload, re-upload, and
 	// re-upload after a server restart (empty in-memory store) identically.
 	for _, t := range ps.Types {
-		if err := schema.CreateTable(ctx, s.db, name, t, s.scalars); err != nil {
+		if err := s.createTable(ctx, s.db, name, t, s.scalars); err != nil {
 			return nil, fmt.Errorf("upsert schema %q: %w", name, err)
 		}
-		if err := schema.AddColumns(ctx, s.db, name, t, s.scalars); err != nil {
+		if err := s.addColumns(ctx, s.db, name, t, s.scalars); err != nil {
 			return nil, fmt.Errorf("upsert schema %q: %w", name, err)
 		}
 	}
