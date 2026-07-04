@@ -77,7 +77,7 @@ func collect(root string) ([]envVar, error) {
 		}
 		if d.IsDir() {
 			base := d.Name()
-			if base == "vendor" || base == "testdata" || strings.HasPrefix(base, ".") {
+			if base == "vendor" || base == "testdata" || (strings.HasPrefix(base, ".") && base != ".") {
 				return filepath.SkipDir
 			}
 			return nil
