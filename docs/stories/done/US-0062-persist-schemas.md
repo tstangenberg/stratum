@@ -1,7 +1,7 @@
 ---
 id: US-0062
 tags: [schema, persistence, infrastructure]
-status: ready
+status: done
 ---
 
 # US-0062: Persist schemas to PostgreSQL and load on startup
@@ -20,11 +20,11 @@ The `stratum_schemas` table lives in the `stratum_system` schema and is created 
 
 ## Acceptance Criteria
 
-- [ ] A Goose migration creates the `stratum_system.stratum_schemas` table: `name TEXT PRIMARY KEY, sdl TEXT NOT NULL, version INT NOT NULL, created_at TIMESTAMPTZ NOT NULL, updated_at TIMESTAMPTZ NOT NULL`
-- [ ] `UpsertSchema` saves (or updates) the row in `stratum_schemas`
-- [ ] On startup, all rows from `stratum_schemas` are loaded; each SDL is parsed and its handler is built and registered in the store before the HTTP server begins accepting connections
-- [ ] A schema that fails to load at startup is logged and skipped — startup is not aborted
-- [ ] After a restart with the same database, `POST /graphql/{name}` responds correctly without any re-upload
+- [x] A Goose migration creates the `stratum_system.stratum_schemas` table: `name TEXT PRIMARY KEY, sdl TEXT NOT NULL, version INT NOT NULL, created_at TIMESTAMPTZ NOT NULL, updated_at TIMESTAMPTZ NOT NULL`
+- [x] `UpsertSchema` saves (or updates) the row in `stratum_schemas`
+- [x] On startup, all rows from `stratum_schemas` are loaded; each SDL is parsed and its handler is built and registered in the store before the HTTP server begins accepting connections
+- [x] A schema that fails to load at startup is logged and skipped — startup is not aborted
+- [x] After a restart with the same database, `POST /graphql/{name}` responds correctly without any re-upload
 
 ## E2E Tests
 

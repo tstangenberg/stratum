@@ -37,6 +37,16 @@ func (s *Store) Set(name string, schema *Schema) {
 	s.schemas[name] = schema
 }
 
+// SetIfNewer stores schema unless the current value has a higher version.
+func (s *Store) SetIfNewer(name string, schema *Schema) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if existing, ok := s.schemas[name]; ok && existing.Version > schema.Version {
+		return
+	}
+	s.schemas[name] = schema
+}
+
 // Upsert stores sch under name, atomically assigning its Version and CreatedAt
 // under the write lock. If a schema with the same name already exists, Version
 // is incremented from the existing value and CreatedAt is preserved; otherwise
