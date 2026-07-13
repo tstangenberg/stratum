@@ -1541,3 +1541,202 @@ func TestSchemaReuploadAddField(t *testing.T) {
 		t.Errorf("upload v3: status = %q, want %q", resp3.Status, api.Applied)
 	}
 }
+
+func TestSchemaMultipleTypes(t *testing.T) {
+	ctx := context.Background()
+
+	pgc, err := postgres.Run(ctx, "postgres:16-alpine",
+		postgres.WithDatabase("stratum"),
+		postgres.WithUsername("stratum"),
+		postgres.WithPassword("stratum"),
+		testcontainers.WithWaitStrategy(
+			wait.ForLog("database system is ready to accept connections").
+				WithOccurrence(2).
+				WithStartupTimeout(30*time.Second),
+		),
+	)
+	if err != nil {
+		t.Fatalf("start postgres: %v", err)
+	}
+	t.Cleanup(func() { _ = pgc.Terminate(ctx) })
+
+	dsn, err := pgc.ConnectionString(ctx, "sslmode=disable")
+	if err != nil {
+		t.Fatalf("connection string: %v", err)
+	}
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		t.Fatalf("connect pool: %v", err)
+	}
+	t.Cleanup(pool.Close)
+
+	handler := mustServerHandler(t, server.NewStratumServer().WithDB(pool))
+
+	sdl := `
+		type Customer {
+			id: ID!
+			name: String!
+		}
+
+		type Product {
+			id: ID!
+			sku: String!
+		}
+	`
+	body, _ := json.Marshal(api.SchemaUploadRequest{Sdl: sdl})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/schemas/catalog",
+		bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("upload: expected 200, got %d — body: %s", w.Code, w.Body.String())
+	}
+
+	var uploadResp api.SchemaUploadResponse
+	if err := json.NewDecoder(w.Body).Decode(&uploadResp); err != nil {
+		t.Fatalf("upload: decode response: %v", err)
+	}
+	if uploadResp.Status != api.Applied {
+		t.Errorf("upload: status = %q, want %q", uploadResp.Status, api.Applied)
+	}
+
+	for _, table := range []string{"catalog_customer", "catalog_product"} {
+		var exists bool
+		if err := pool.QueryRow(ctx,
+			`SELECT EXISTS(SELECT 1 FROM information_schema.tables WHERE table_name = $1)`,
+			table,
+		).Scan(&exists); err != nil {
+			t.Fatalf("table %s: %v", table, err)
+		}
+		if !exists {
+			t.Errorf("table %s does not exist", table)
+		}
+	}
+
+	gqlCreateCustomer := `{"query":"mutation { customer { create(input: {id: \"shared-id\", name: \"Ada\"}) { id name } } }"}`
+	req = httptest.NewRequest(http.MethodPost, "/graphql/catalog",
+		strings.NewReader(gqlCreateCustomer))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("create customer: expected 200, got %d — body: %s", w.Code, w.Body.String())
+	}
+
+	var customerResult struct {
+		Data struct {
+			Customer struct {
+				Create struct {
+					ID   string `json:"id"`
+					Name string `json:"name"`
+				} `json:"create"`
+			} `json:"customer"`
+		} `json:"data"`
+		Errors []struct{ Message string } `json:"errors"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&customerResult); err != nil {
+		t.Fatalf("create customer: decode: %v", err)
+	}
+	if len(customerResult.Errors) > 0 {
+		t.Fatalf("create customer: GraphQL errors: %v", customerResult.Errors)
+	}
+	if customerResult.Data.Customer.Create.ID != "shared-id" {
+		t.Errorf("create customer: id = %q, want shared-id", customerResult.Data.Customer.Create.ID)
+	}
+	if customerResult.Data.Customer.Create.Name != "Ada" {
+		t.Errorf("create customer: name = %q, want Ada", customerResult.Data.Customer.Create.Name)
+	}
+
+	gqlCreateProduct := `{"query":"mutation { product { create(input: {id: \"shared-id\", sku: \"SKU-1\"}) { id sku } } }"}`
+	req = httptest.NewRequest(http.MethodPost, "/graphql/catalog",
+		strings.NewReader(gqlCreateProduct))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("create product: expected 200, got %d — body: %s", w.Code, w.Body.String())
+	}
+
+	var productResult struct {
+		Data struct {
+			Product struct {
+				Create struct {
+					ID  string `json:"id"`
+					SKU string `json:"sku"`
+				} `json:"create"`
+			} `json:"product"`
+		} `json:"data"`
+		Errors []struct{ Message string } `json:"errors"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&productResult); err != nil {
+		t.Fatalf("create product: decode: %v", err)
+	}
+	if len(productResult.Errors) > 0 {
+		t.Fatalf("create product: GraphQL errors: %v", productResult.Errors)
+	}
+	if productResult.Data.Product.Create.ID != "shared-id" {
+		t.Errorf("create product: id = %q, want shared-id", productResult.Data.Product.Create.ID)
+	}
+	if productResult.Data.Product.Create.SKU != "SKU-1" {
+		t.Errorf("create product: sku = %q, want SKU-1", productResult.Data.Product.Create.SKU)
+	}
+
+	gqlQuery := `{"query":"{ customer { get(id: \"shared-id\") { id name } list { id name } } product { get(id: \"shared-id\") { id sku } list { id sku } } }"}`
+	req = httptest.NewRequest(http.MethodPost, "/graphql/catalog",
+		strings.NewReader(gqlQuery))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("query: expected 200, got %d — body: %s", w.Code, w.Body.String())
+	}
+
+	var queryResult struct {
+		Data struct {
+			Customer struct {
+				Get struct {
+					ID   string `json:"id"`
+					Name string `json:"name"`
+				} `json:"get"`
+				List []struct {
+					ID   string `json:"id"`
+					Name string `json:"name"`
+				} `json:"list"`
+			} `json:"customer"`
+			Product struct {
+				Get struct {
+					ID  string `json:"id"`
+					SKU string `json:"sku"`
+				} `json:"get"`
+				List []struct {
+					ID  string `json:"id"`
+					SKU string `json:"sku"`
+				} `json:"list"`
+			} `json:"product"`
+		} `json:"data"`
+		Errors []struct{ Message string } `json:"errors"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&queryResult); err != nil {
+		t.Fatalf("query: decode: %v", err)
+	}
+	if len(queryResult.Errors) > 0 {
+		t.Fatalf("query: GraphQL errors: %v", queryResult.Errors)
+	}
+	if queryResult.Data.Customer.Get.Name != "Ada" {
+		t.Errorf("customer get: name = %q, want Ada", queryResult.Data.Customer.Get.Name)
+	}
+	if len(queryResult.Data.Customer.List) != 1 || queryResult.Data.Customer.List[0].Name != "Ada" {
+		t.Errorf("customer list = %+v, want one Ada", queryResult.Data.Customer.List)
+	}
+	if queryResult.Data.Product.Get.SKU != "SKU-1" {
+		t.Errorf("product get: sku = %q, want SKU-1", queryResult.Data.Product.Get.SKU)
+	}
+	if len(queryResult.Data.Product.List) != 1 || queryResult.Data.Product.List[0].SKU != "SKU-1" {
+		t.Errorf("product list = %+v, want one SKU-1", queryResult.Data.Product.List)
+	}
+}
