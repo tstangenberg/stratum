@@ -34,8 +34,9 @@ Go 1.26 · PostgreSQL · `vektah/gqlparser` (SDL parsing) · `graphql-go/graphql
 1. Verify every acceptance criterion in the story file is met
 2. Check off each criterion (`- [ ]` → `- [x]`) in the story file and commit the update
 3. Move the story file: `git mv docs/stories/ready/US-NNNN-*.md docs/stories/done/` and set `status: done` in the frontmatter
-4. Run the full test suite: `go test ./...`
-5. Ensure 100% coverage for all internal packages: `go test ./internal/... -cover`
+4. Review every ADR in `docs/decisions/` that is relevant to the changes — if the implementation introduces a new pattern, constraint, or convention, add an addendum to the relevant ADR(s) before opening the PR
+5. Run the full test suite: `go test ./...`
+6. Ensure 100% coverage for all internal packages: `go test ./internal/... -cover`
 
 ## Test strategy — Double Loop TDD
 

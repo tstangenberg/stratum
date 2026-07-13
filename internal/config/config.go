@@ -57,7 +57,7 @@ func Load() error {
 }
 
 func resolveConfigPath() (string, error) {
-	if p := os.Getenv("STRATUM_CONFIG"); p != "" {
+	if p := os.Getenv(EnvConfig); p != "" {
 		if _, err := os.Stat(p); err != nil {
 			return "", fmt.Errorf("config: file %q not found: %w", p, err)
 		}

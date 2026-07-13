@@ -31,7 +31,7 @@ import (
 )
 
 func resolveAddr() string {
-	if addr := os.Getenv("STRATUM_SERVER_ADDR"); addr != "" {
+	if addr := os.Getenv(config.EnvServerAddr); addr != "" {
 		return addr
 	}
 	return ":8080"
@@ -55,7 +55,7 @@ func run(addr string) error {
 		defer dbplugin.ClosePool()
 		srv = srv.WithDB(pool)
 	} else {
-		log.Printf("STRATUM_DATABASE_URL not set; schema operations disabled")
+		log.Printf("%s not set; schema operations disabled", dbplugin.EnvDatabaseURL)
 	}
 	srv = srv.WithMiddlewares(plugin.BuildMiddlewares()...)
 	h, err := server.Handler(srv)

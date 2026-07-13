@@ -66,7 +66,7 @@ func New(db Pinger) *Plugin {
 // Returns nil when the variable is not set. The created pool is stored and
 // available via Pool().
 func FromEnv() *Plugin {
-	dsn := os.Getenv("STRATUM_DATABASE_URL")
+	dsn := os.Getenv(EnvDatabaseURL)
 	if dsn == "" {
 		return nil
 	}

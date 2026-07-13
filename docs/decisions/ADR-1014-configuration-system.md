@@ -42,3 +42,33 @@ The core config system (`internal/config`) reads a YAML file and expands every l
 - Adding a new plugin never requires changes to the core config system
 - Config keys are discoverable only by reading plugin source or documentation — no central registry
 - The system is forward-compatible with dynamically loaded plugins
+
+## Addendum (US-0063): Constant declaration and doc comment convention
+
+Every `STRATUM_*` environment variable must be declared as an exported constant in the Go package that reads it:
+
+```go
+// Human-readable description of what the variable controls.
+// Default: <default value, or "none" if required>
+const EnvFoo = "STRATUM_FOO"
+```
+
+**Placement rules:**
+- Core infrastructure vars (`STRATUM_CONFIG`, `STRATUM_SERVER_ADDR`) → `internal/config/env.go`
+- Plugin vars → an `env.go` file in the plugin's own package (e.g. `internal/plugin/database/env.go`)
+- Schema vars → `internal/schema/env.go`
+
+**Doc comment format:**
+- First line(s): human-readable description — do **not** open with the Go identifier name (`EnvFoo is …`); the variable name is already in the generated table's first column
+- `Default:` line: the default value, or `none` if the variable is required
+
+All `os.Getenv(...)` call sites must reference the constant; magic string literals for `STRATUM_*` names are not allowed.
+
+**Code generator:**
+`cmd/configdocs` walks all non-test Go source files, extracts constants matching this pattern, and writes a sorted reference table to `docs/configuration.md`. Regenerate from the module root with:
+
+```
+go generate ./...          # or: go run ./cmd/configdocs
+```
+
+No changes to `internal/config` are required when adding a new env var — declare the constant in your package's `env.go` and the generator picks it up automatically.

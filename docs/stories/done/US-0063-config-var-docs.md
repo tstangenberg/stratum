@@ -1,7 +1,7 @@
 ---
 id: US-0063
 tags: [config, infrastructure, dx]
-status: ready
+status: done
 ---
 
 # US-0063: Self-documenting configuration variables
@@ -18,13 +18,13 @@ The fix is to declare each env var as an exported constant in the owning package
 
 ## Acceptance Criteria
 
-- [ ] Every `STRATUM_*` env var used in the codebase is declared as an exported constant in the package that owns it (e.g. `config.EnvServerAddr`, `config.EnvDatabaseURL`)
-- [ ] Each constant has a doc comment following the convention: first line is a human-readable description; a `Default:` line gives the default value (or `none` if required)
-- [ ] No magic strings remain for `STRATUM_*` vars — all call sites reference the constant
-- [ ] `cmd/configdocs/main.go` generates `docs/configuration.md` — a markdown table with columns: Variable, Default, Description
-- [ ] `go generate ./...` (or an explicit `go run ./cmd/configdocs`) regenerates the doc; the command is documented in the generated file header
-- [ ] The generated `docs/configuration.md` is committed to the repo and kept up to date
-- [ ] `docs/decisions/ADR-1014-configuration-system.md` is updated with an addendum documenting the constant declaration convention and doc comment format
+- [x] Every `STRATUM_*` env var used in the codebase is declared as an exported constant in the package that owns it (e.g. `config.EnvServerAddr`, `config.EnvDatabaseURL`)
+- [x] Each constant has a doc comment following the convention: first line is a human-readable description; a `Default:` line gives the default value (or `none` if required)
+- [x] No magic strings remain for `STRATUM_*` vars — all call sites reference the constant
+- [x] `cmd/configdocs/main.go` generates `docs/configuration.md` — a markdown table with columns: Variable, Default, Description
+- [x] `go generate ./...` (or an explicit `go run ./cmd/configdocs`) regenerates the doc; the command is documented in the generated file header
+- [x] The generated `docs/configuration.md` is committed to the repo and kept up to date
+- [x] `docs/decisions/ADR-1014-configuration-system.md` is updated with an addendum documenting the constant declaration convention and doc comment format
 
 ## E2E Tests
 
