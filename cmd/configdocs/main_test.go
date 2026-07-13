@@ -20,6 +20,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -147,6 +148,71 @@ const EnvTest = "STRATUM_TEST"
 	}
 	if len(vars) != 0 {
 		t.Errorf("got %d vars from test file, want 0", len(vars))
+	}
+}
+
+func TestCollect_groupDocFallback(t *testing.T) {
+	dir := t.TempDir()
+	err := os.WriteFile(filepath.Join(dir, "env.go"), []byte(`package foo
+
+// Group description.
+// Default: group-default
+const (
+	EnvFoo = "STRATUM_FOO"
+)
+`), 0644)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	vars, err := collect(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(vars) != 1 {
+		t.Fatalf("got %d vars, want 1", len(vars))
+	}
+	if vars[0].Description != "Group description." {
+		t.Errorf("description: got %q, want %q", vars[0].Description, "Group description.")
+	}
+	if vars[0].Default != "group-default" {
+		t.Errorf("default: got %q, want %q", vars[0].Default, "group-default")
+	}
+}
+
+func TestRun_happyPath(t *testing.T) {
+	dir := t.TempDir()
+	err := os.WriteFile(filepath.Join(dir, "env.go"), []byte(`package foo
+
+// Listen address.
+// Default: :8080
+const EnvAddr = "STRATUM_SERVER_ADDR"
+`), 0644)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := filepath.Join(dir, "out.md")
+	if err := run(dir, out); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	data, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "STRATUM_SERVER_ADDR") {
+		t.Error("output missing STRATUM_SERVER_ADDR")
+	}
+}
+
+func TestRun_collectError(t *testing.T) {
+	if err := run("/nonexistent/root/path", t.TempDir()+"/out.md"); err == nil {
+		t.Fatal("want error for nonexistent root, got nil")
+	}
+}
+
+func TestRun_writeError(t *testing.T) {
+	if err := run(t.TempDir(), "/nonexistent/dir/out.md"); err == nil {
+		t.Fatal("want error for unwritable output path, got nil")
 	}
 }
 

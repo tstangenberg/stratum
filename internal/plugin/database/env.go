@@ -17,6 +17,6 @@
 
 package database
 
-// EnvDatabaseURL is the PostgreSQL connection DSN.
+// PostgreSQL connection DSN.
 // Default: none (schema operations disabled when unset)
 const EnvDatabaseURL = "STRATUM_DATABASE_URL"

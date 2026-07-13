@@ -15,12 +15,6 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-package apikey
+//go:generate go run ./cmd/configdocs
 
-// Pre-shared key clients must send in the X-API-Key header.
-// Default: none (auth disabled when unset)
-const EnvAPIKey = "STRATUM_API_KEY"
-
-// Overrides the position of the api-key-auth middleware in the chain.
-// Default: 100
-const EnvMiddlewarePriority = "STRATUM_HTTP_MIDDLEWARE_API_KEY_AUTH_PRIORITY"
+package stratum

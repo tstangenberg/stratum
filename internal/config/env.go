@@ -17,10 +17,10 @@
 
 package config
 
-// EnvConfig is the path to the YAML configuration file.
+// Path to the YAML configuration file.
 // Default: none (falls back to ./stratum.yaml, then no file)
 const EnvConfig = "STRATUM_CONFIG"
 
-// EnvServerAddr is the TCP address the HTTP server listens on.
+// TCP address the HTTP server listens on.
 // Default: :8080
 const EnvServerAddr = "STRATUM_SERVER_ADDR"

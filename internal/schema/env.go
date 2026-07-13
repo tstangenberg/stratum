@@ -17,6 +17,6 @@
 
 package schema
 
-// EnvMaxDepth is the maximum N:1 relation traversal depth per query.
+// Maximum N:1 relation traversal depth per query.
 // Default: 5
 const EnvMaxDepth = "STRATUM_MAX_DEPTH"

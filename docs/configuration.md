@@ -5,11 +5,11 @@
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `STRATUM_API_KEY` | none (auth disabled when unset) | EnvAPIKey is the pre-shared key clients must send in the X-API-Key header. |
-| `STRATUM_CONFIG` | none (falls back to ./stratum.yaml, then no file) | EnvConfig is the path to the YAML configuration file. |
-| `STRATUM_DATABASE_URL` | none (schema operations disabled when unset) | EnvDatabaseURL is the PostgreSQL connection DSN. |
-| `STRATUM_HTTP_MIDDLEWARE_API_KEY_AUTH_PRIORITY` | 100 | EnvMiddlewarePriority overrides the position of the api-key-auth middleware in the chain. |
-| `STRATUM_MAX_DEPTH` | 5 | EnvMaxDepth is the maximum N:1 relation traversal depth per query. |
-| `STRATUM_PLUGINS_PAGINATION_DEFAULT_LIMIT` | 100 | EnvDefaultLimit is the default number of records returned per page. |
-| `STRATUM_PLUGINS_PAGINATION_MAX_LIMIT` | 1000 | EnvMaxLimit is the hard maximum number of records per page. |
-| `STRATUM_SERVER_ADDR` | :8080 | EnvServerAddr is the TCP address the HTTP server listens on. |
+| `STRATUM_API_KEY` | none (auth disabled when unset) | Pre-shared key clients must send in the X-API-Key header. |
+| `STRATUM_CONFIG` | none (falls back to ./stratum.yaml, then no file) | Path to the YAML configuration file. |
+| `STRATUM_DATABASE_URL` | none (schema operations disabled when unset) | PostgreSQL connection DSN. |
+| `STRATUM_HTTP_MIDDLEWARE_API_KEY_AUTH_PRIORITY` | 100 | Overrides the position of the api-key-auth middleware in the chain. |
+| `STRATUM_MAX_DEPTH` | 5 | Maximum N:1 relation traversal depth per query. |
+| `STRATUM_PLUGINS_PAGINATION_DEFAULT_LIMIT` | 100 | Default number of records returned per page. |
+| `STRATUM_PLUGINS_PAGINATION_MAX_LIMIT` | 1000 | Hard maximum number of records per page. |
+| `STRATUM_SERVER_ADDR` | :8080 | TCP address the HTTP server listens on. |

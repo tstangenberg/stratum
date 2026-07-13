@@ -46,10 +46,16 @@ type envVar struct {
 }
 
 func main() {
-	vars, err := collect(".")
-	if err != nil {
+	if err := run(".", "docs/configuration.md"); err != nil {
 		fmt.Fprintf(os.Stderr, "configdocs: %v\n", err)
 		os.Exit(1)
+	}
+}
+
+func run(root, out string) error {
+	vars, err := collect(root)
+	if err != nil {
+		return err
 	}
 	sort.Slice(vars, func(i, j int) bool { return vars[i].Name < vars[j].Name })
 
@@ -59,12 +65,11 @@ func main() {
 		fmt.Fprintf(&buf, "| `%s` | %s | %s |\n", v.Name, v.Default, v.Description)
 	}
 
-	const out = "docs/configuration.md"
 	if err := os.WriteFile(out, buf.Bytes(), 0644); err != nil {
-		fmt.Fprintf(os.Stderr, "configdocs: write %s: %v\n", out, err)
-		os.Exit(1)
+		return fmt.Errorf("write %s: %w", out, err)
 	}
 	fmt.Printf("wrote %s (%d variables)\n", out, len(vars))
+	return nil
 }
 
 func collect(root string) ([]envVar, error) {

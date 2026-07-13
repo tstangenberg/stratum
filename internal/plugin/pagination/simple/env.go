@@ -17,10 +17,10 @@
 
 package simple
 
-// EnvDefaultLimit is the default number of records returned per page.
+// Default number of records returned per page.
 // Default: 100
 const EnvDefaultLimit = "STRATUM_PLUGINS_PAGINATION_DEFAULT_LIMIT"
 
-// EnvMaxLimit is the hard maximum number of records per page.
+// Hard maximum number of records per page.
 // Default: 1000
 const EnvMaxLimit = "STRATUM_PLUGINS_PAGINATION_MAX_LIMIT"
