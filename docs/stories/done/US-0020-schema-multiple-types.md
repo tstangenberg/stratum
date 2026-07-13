@@ -1,7 +1,7 @@
 ---
 id: US-0020
 tags: [schema]
-status: ready
+status: done
 ---
 
 # US-0020: Schema with multiple independent types
@@ -16,11 +16,11 @@ Each GraphQL type maps to its own PostgreSQL table. Multiple types in a single s
 
 ## Acceptance Criteria
 
-- [ ] Schema with two or more types is accepted in a single `POST /schemas/{name}`
-- [ ] A separate PostgreSQL table is created for each type
-- [ ] The GraphQL endpoint exposes `get` and `list` queries for all types
-- [ ] Records for each type can be created and queried independently
-- [ ] Types do not interfere with each other (separate namespaces in the GraphQL schema)
+- [x] Schema with two or more types is accepted in a single `POST /schemas/{name}`
+- [x] A separate PostgreSQL table is created for each type
+- [x] The GraphQL endpoint exposes `get` and `list` queries for all types
+- [x] Records for each type can be created and queried independently
+- [x] Types do not interfere with each other (separate namespaces in the GraphQL schema)
 
 ## E2E Tests
 
