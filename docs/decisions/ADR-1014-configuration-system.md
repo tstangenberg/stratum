@@ -59,7 +59,7 @@ const EnvFoo = "STRATUM_FOO"
 - Schema vars → `internal/schema/env.go`
 
 **Doc comment format:**
-- First line(s): human-readable description
+- First line(s): human-readable description — do **not** open with the Go identifier name (`EnvFoo is …`); the variable name is already in the generated table's first column
 - `Default:` line: the default value, or `none` if the variable is required
 
 All `os.Getenv(...)` call sites must reference the constant; magic string literals for `STRATUM_*` names are not allowed.
@@ -68,7 +68,7 @@ All `os.Getenv(...)` call sites must reference the constant; magic string litera
 `cmd/configdocs` walks all non-test Go source files, extracts constants matching this pattern, and writes a sorted reference table to `docs/configuration.md`. Regenerate from the module root with:
 
 ```
-go run ./cmd/configdocs
+go generate ./...          # or: go run ./cmd/configdocs
 ```
 
 No changes to `internal/config` are required when adding a new env var — declare the constant in your package's `env.go` and the generator picks it up automatically.
