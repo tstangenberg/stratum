@@ -18,6 +18,7 @@
 package e2e
 
 import (
+	"context"
 	"net/http"
 	"testing"
 
@@ -27,6 +28,9 @@ import (
 
 func mustServerHandler(t *testing.T, srv *server.StratumServer) http.Handler {
 	t.Helper()
+	if err := srv.Initialize(context.Background()); err != nil {
+		t.Fatalf("server.Initialize: %v", err)
+	}
 	h, err := server.Handler(srv)
 	if err != nil {
 		t.Fatalf("server.Handler: %v", err)

@@ -1740,3 +1740,110 @@ func TestSchemaMultipleTypes(t *testing.T) {
 		t.Errorf("product list = %+v, want one SKU-1", queryResult.Data.Product.List)
 	}
 }
+
+func TestSchemaSurvivesRestart(t *testing.T) {
+	ctx := context.Background()
+
+	pgc, err := postgres.Run(ctx, "postgres:16-alpine",
+		postgres.WithDatabase("stratum"),
+		postgres.WithUsername("stratum"),
+		postgres.WithPassword("stratum"),
+		testcontainers.WithWaitStrategy(
+			wait.ForLog("database system is ready to accept connections").
+				WithOccurrence(2).
+				WithStartupTimeout(30*time.Second),
+		),
+	)
+	if err != nil {
+		t.Fatalf("start postgres: %v", err)
+	}
+	t.Cleanup(func() { _ = pgc.Terminate(ctx) })
+
+	dsn, err := pgc.ConnectionString(ctx, "sslmode=disable")
+	if err != nil {
+		t.Fatalf("connection string: %v", err)
+	}
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		t.Fatalf("connect pool: %v", err)
+	}
+	t.Cleanup(pool.Close)
+
+	firstHandler := mustServerHandler(t, server.NewStratumServer().WithDB(pool))
+
+	sdl := `type Device { id: ID! serial: String! }`
+	body, _ := json.Marshal(api.SchemaUploadRequest{Sdl: sdl})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/schemas/devices",
+		bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	firstHandler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("upload: expected 200, got %d — body: %s", w.Code, w.Body.String())
+	}
+
+	gqlCreate := `{"query":"mutation { device { create(input: {serial: \"SN-001\"}) { id serial } } }"}`
+	req = httptest.NewRequest(http.MethodPost, "/graphql/devices",
+		strings.NewReader(gqlCreate))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	firstHandler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("create: expected 200, got %d — body: %s", w.Code, w.Body.String())
+	}
+
+	var createResult struct {
+		Data struct {
+			Device struct {
+				Create struct {
+					ID string `json:"id"`
+				} `json:"create"`
+			} `json:"device"`
+		} `json:"data"`
+		Errors []struct{ Message string } `json:"errors"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&createResult); err != nil {
+		t.Fatalf("create: decode: %v", err)
+	}
+	if len(createResult.Errors) > 0 {
+		t.Fatalf("create: GraphQL errors: %v", createResult.Errors)
+	}
+
+	restartedHandler := mustServerHandler(t, server.NewStratumServer().WithDB(pool))
+	gqlGet := fmt.Sprintf(
+		`{"query":"{ device { get(id: \"%s\") { id serial } } }"}`,
+		createResult.Data.Device.Create.ID,
+	)
+	req = httptest.NewRequest(http.MethodPost, "/graphql/devices",
+		strings.NewReader(gqlGet))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	restartedHandler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("query after restart: expected 200, got %d — body: %s", w.Code, w.Body.String())
+	}
+
+	var queryResult struct {
+		Data struct {
+			Device struct {
+				Get struct {
+					ID     string `json:"id"`
+					Serial string `json:"serial"`
+				} `json:"get"`
+			} `json:"device"`
+		} `json:"data"`
+		Errors []struct{ Message string } `json:"errors"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&queryResult); err != nil {
+		t.Fatalf("query after restart: decode: %v", err)
+	}
+	if len(queryResult.Errors) > 0 {
+		t.Fatalf("query after restart: GraphQL errors: %v", queryResult.Errors)
+	}
+	if queryResult.Data.Device.Get.Serial != "SN-001" {
+		t.Errorf("query after restart: serial = %q, want SN-001", queryResult.Data.Device.Get.Serial)
+	}
+}

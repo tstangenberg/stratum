@@ -33,6 +33,7 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 
 	"github.com/tstangenberg/stratum/internal/api"
+	"github.com/tstangenberg/stratum/internal/system"
 )
 
 func startServerPool(t *testing.T) *pgxpool.Pool {
@@ -63,6 +64,9 @@ func startServerPool(t *testing.T) *pgxpool.Pool {
 		t.Fatalf("create pool: %v", err)
 	}
 	t.Cleanup(pool.Close)
+	if err := system.Migrate(ctx, pool); err != nil {
+		t.Fatalf("system.Migrate: %v", err)
+	}
 	return pool
 }
 
