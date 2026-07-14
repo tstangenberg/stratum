@@ -18,6 +18,8 @@
 package main
 
 import (
+	"context"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -56,6 +58,9 @@ func run(addr string) error {
 		srv = srv.WithDB(pool)
 	} else {
 		log.Printf("%s not set; schema operations disabled", dbplugin.EnvDatabaseURL)
+	}
+	if err := srv.Initialize(context.Background()); err != nil {
+		return fmt.Errorf("run: initialize server: %w", err)
 	}
 	srv = srv.WithMiddlewares(plugin.BuildMiddlewares()...)
 	h, err := server.Handler(srv)

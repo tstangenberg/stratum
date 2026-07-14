@@ -112,3 +112,20 @@ func TestStore_All(t *testing.T) {
 		t.Errorf("expected alpha and beta, got %v", names)
 	}
 }
+
+func TestStore_SetIfNewer(t *testing.T) {
+	store := schema.NewStore()
+	store.Set("locations", &schema.Schema{Name: "locations", Version: 2, SDL: "newer"})
+
+	store.SetIfNewer("locations", &schema.Schema{Name: "locations", Version: 1, SDL: "older"})
+	got, _ := store.Get("locations")
+	if got.Version != 2 || got.SDL != "newer" {
+		t.Errorf("older schema replaced newer one: %+v", got)
+	}
+
+	store.SetIfNewer("locations", &schema.Schema{Name: "locations", Version: 3, SDL: "newest"})
+	got, _ = store.Get("locations")
+	if got.Version != 3 || got.SDL != "newest" {
+		t.Errorf("newer schema was not stored: %+v", got)
+	}
+}

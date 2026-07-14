@@ -22,6 +22,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 	"sync"
@@ -38,23 +39,47 @@ import (
 	intscalar "github.com/tstangenberg/stratum/internal/plugin/scalar/int"
 	stringscalar "github.com/tstangenberg/stratum/internal/plugin/scalar/string"
 	"github.com/tstangenberg/stratum/internal/schema"
+	"github.com/tstangenberg/stratum/internal/system"
 	"github.com/tstangenberg/stratum/internal/ui"
 )
 
 var errNotImplemented = errors.New("not implemented")
 
+type schemaRepository interface {
+	Upsert(context.Context, schema.PersistedSchema) (schema.PersistedSchema, error)
+	All(context.Context) ([]schema.PersistedSchema, error)
+}
+
+type schemaHandlerBuilder func(
+	*pgxpool.Pool,
+	string,
+	*schema.ParsedSchema,
+	map[string]scalar.Plugin,
+	[]plugin.QueryModifier,
+	[]plugin.FilterPlugin,
+	int,
+) (http.Handler, error)
+
+type printfLogger interface {
+	Printf(string, ...any)
+}
+
 // StratumServer is the main server struct.
 type StratumServer struct {
-	healthPlugins    []plugin.HealthPlugin
-	middlewares      []plugin.HTTPMiddleware
-	db               *pgxpool.Pool
-	schemas          *schema.Store
-	scalars          map[string]scalar.Plugin
-	queryModifiers   []plugin.QueryModifier
-	filterPlugins    []plugin.FilterPlugin
-	uiHandlerBuilder func(ui.StatusProvider, ui.SchemaProvider) (*ui.Handler, error)
-	createTable      func(ctx context.Context, db *pgxpool.Pool, schemaName string, t schema.TypeDef, scalars map[string]scalar.Plugin) error
-	addColumns       func(ctx context.Context, db *pgxpool.Pool, schemaName string, t schema.TypeDef, scalars map[string]scalar.Plugin) error
+	healthPlugins      []plugin.HealthPlugin
+	middlewares        []plugin.HTTPMiddleware
+	db                 *pgxpool.Pool
+	schemas            *schema.Store
+	scalars            map[string]scalar.Plugin
+	queryModifiers     []plugin.QueryModifier
+	filterPlugins      []plugin.FilterPlugin
+	uiHandlerBuilder   func(ui.StatusProvider, ui.SchemaProvider) (*ui.Handler, error)
+	createTable        func(ctx context.Context, db *pgxpool.Pool, schemaName string, t schema.TypeDef, scalars map[string]scalar.Plugin) error
+	addColumns         func(ctx context.Context, db *pgxpool.Pool, schemaName string, t schema.TypeDef, scalars map[string]scalar.Plugin) error
+	migrateSystem      func(context.Context, *pgxpool.Pool) error
+	schemaRepository   schemaRepository
+	buildSchemaHandler schemaHandlerBuilder
+	logger             printfLogger
 }
 
 // NewStratumServer creates a new StratumServer. Health plugins and query
@@ -79,16 +104,65 @@ func NewStratumServer() *StratumServer {
 			eqfilter.New("Float", scalars["Float"].GraphQLType()),
 			eqfilter.New("Boolean", scalars["Boolean"].GraphQLType()),
 		},
-		uiHandlerBuilder: ui.NewHandler,
-		createTable:      schema.CreateTable,
-		addColumns:       schema.AddColumns,
+		uiHandlerBuilder:   ui.NewHandler,
+		createTable:        schema.CreateTable,
+		addColumns:         schema.AddColumns,
+		migrateSystem:      system.Migrate,
+		buildSchemaHandler: schema.BuildHandler,
+		logger:             log.Default(),
 	}
 }
 
 // WithDB sets the PostgreSQL connection pool and returns the server for chaining.
 func (s *StratumServer) WithDB(db *pgxpool.Pool) *StratumServer {
 	s.db = db
+	s.schemaRepository = schema.NewRepository(db)
 	return s
+}
+
+// Initialize runs system migrations and restores persisted schemas.
+func (s *StratumServer) Initialize(ctx context.Context) error {
+	if s.db == nil {
+		return nil
+	}
+	if err := s.migrateSystem(ctx, s.db); err != nil {
+		return fmt.Errorf("initialize server: migrate system tables: %w", err)
+	}
+
+	persistedSchemas, err := s.schemaRepository.All(ctx)
+	if err != nil {
+		return fmt.Errorf("initialize server: load persisted schemas: %w", err)
+	}
+	for _, persisted := range persistedSchemas {
+		parsed, err := schema.ParseSDL(persisted.SDL)
+		if err != nil {
+			s.logger.Printf("load persisted schema %q: parse SDL: %v", persisted.Name, err)
+			continue
+		}
+		handler, err := s.buildSchemaHandler(
+			s.db,
+			persisted.Name,
+			parsed,
+			s.scalars,
+			s.queryModifiers,
+			s.filterPlugins,
+			schema.MaxDepthFromEnv(),
+		)
+		if err != nil {
+			s.logger.Printf("load persisted schema %q: build handler: %v", persisted.Name, err)
+			continue
+		}
+		s.schemas.Set(persisted.Name, &schema.Schema{
+			Name:      persisted.Name,
+			SDL:       persisted.SDL,
+			Parsed:    parsed,
+			Version:   persisted.Version,
+			CreatedAt: persisted.CreatedAt,
+			UpdatedAt: persisted.UpdatedAt,
+			Handler:   handler,
+		})
+	}
+	return nil
 }
 
 // WithFilterPlugins replaces the entire filter plugin set and returns the server for chaining.
@@ -249,28 +323,39 @@ func (s *StratumServer) UpsertSchema(ctx context.Context, req api.UpsertSchemaRe
 		}
 	}
 
-	h, err := schema.BuildHandler(s.db, name, ps, s.scalars, s.queryModifiers, s.filterPlugins, schema.MaxDepthFromEnv())
+	h, err := s.buildSchemaHandler(s.db, name, ps, s.scalars, s.queryModifiers, s.filterPlugins, schema.MaxDepthFromEnv())
 	if err != nil {
 		return nil, fmt.Errorf("upsert schema %q: build handler: %w", name, err)
 	}
 
 	now := time.Now()
-	endpoint := "/graphql/" + name
-	newSchema := &schema.Schema{
+	persisted, err := s.schemaRepository.Upsert(ctx, schema.PersistedSchema{
 		Name:      name,
 		SDL:       req.Body.Sdl,
-		Parsed:    ps,
 		CreatedAt: now,
 		UpdatedAt: now,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("upsert schema %q: persist: %w", name, err)
+	}
+
+	endpoint := "/graphql/" + name
+	newSchema := &schema.Schema{
+		Name:      persisted.Name,
+		SDL:       persisted.SDL,
+		Parsed:    ps,
+		Version:   persisted.Version,
+		CreatedAt: persisted.CreatedAt,
+		UpdatedAt: persisted.UpdatedAt,
 		Handler:   h,
 	}
-	s.schemas.Upsert(name, newSchema)
+	s.schemas.SetIfNewer(name, newSchema)
 
 	return api.UpsertSchema200JSONResponse{
 		Name:            name,
 		Status:          api.Applied,
 		Version:         newSchema.Version,
-		UpdatedAt:       now,
+		UpdatedAt:       newSchema.UpdatedAt,
 		GraphqlEndpoint: &endpoint,
 	}, nil
 }
